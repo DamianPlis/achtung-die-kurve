@@ -32,9 +32,13 @@ npm start
 
 One Node process serves both the built website and `/ws` on port **3000**, listening on all interfaces. Set `PORT` to override it. `/health` returns the server status. Deploy this folder to a Node host, or use the included Dockerfile. Configure the host or reverse proxy to support WebSocket upgrades and HTTPS/WSS. Room codes and invite links work unchanged on a public origin.
 
+### Deploy on Vercel
+
+Set the Vercel Framework Preset to **Container** to deploy the root `Dockerfile.vercel` as one website and WebSocket server. Set the project environment variable `PORT=3000` for Preview and Production so routing matches the server. Rooms live in memory, so Vercel scaling or restarting instances can split or end games; reliable multiplayer needs shared room state.
+
 The room code selects a room on the server whose URL players opened; it does not discover other computers or servers by itself. A copied `localhost` invite works only on the host; use the LAN address when sharing at school.
 
-No paid service or external account is required for LAN play. A public deployment requires a Node hosting account; no public deployment is created by this repository.
+No paid service or external account is required for LAN play. A public deployment requires a hosting account; this repository does not create one automatically.
 
 ## How the multiplayer works
 
