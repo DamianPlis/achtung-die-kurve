@@ -244,11 +244,19 @@ export default function GameCanvas({
             context!.stroke();
             context!.setLineDash([]);
           }
-          if (currentRoom.phase === "countdown") {
-            context!.font =
-              String(projectorRef.current ? 18 : 14) + "px Arial, sans-serif";
+          if (
+            currentRoom.phase === "ready" ||
+            currentRoom.phase === "countdown"
+          ) {
+            const labelSize =
+              (projectorRef.current ? 18 : 14) * (lastPixelRatio / scale);
+            context!.font = `${labelSize}px Arial, sans-serif`;
             context!.textAlign = "center";
-            context!.fillText(player.name, x, Math.max(22, y - 18));
+            context!.fillText(
+              player.name,
+              x,
+              Math.max(labelSize * 1.4, y - labelSize * 1.4),
+            );
           }
           context!.globalAlpha = 1;
         }

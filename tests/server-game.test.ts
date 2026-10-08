@@ -27,6 +27,7 @@ function running(count = 2, targetScore = 0) {
     () => 0.5,
   );
   game.start();
+  game.beginCountdown();
   for (let i = 0; i < 180; i++) game.step();
   game.heads.forEach((head, index) => {
     head.x = 200 + index * 300;
@@ -148,6 +149,8 @@ test("next round resets trails and positions; lobby clears match state", () => {
   game.takeSegments();
   game.startRound();
   assert.equal(game.round, 2);
+  assert.equal(game.phase, "ready");
+  game.beginCountdown();
   assert.equal(game.phase, "countdown");
   assert.equal(game.winnerId, undefined);
   assert.equal(game.segments.length, 0);
@@ -450,6 +453,7 @@ test("random resolves once per round, no-power choices do not gain charges, and 
   game.players[49].connected = false;
   game.startRound();
   assert.deepEqual([game.width, game.height], dimensions);
+  game.beginCountdown();
   for (let i = 0; i < 180; i++) game.step();
   game.eliminate(game.players.slice(2).map((player) => player.id));
   game.eliminate(["player-0"]);
@@ -487,6 +491,7 @@ test("pause freezes countdown, movement and power duration until the host resume
   assert.equal(game.heads[0].powerActive, true);
   const countdown = new Game(players(), { ...DEFAULT_SETTINGS });
   countdown.start();
+  countdown.beginCountdown();
   countdown.pause();
   countdown.step();
   assert.equal(countdown.countdown, 180);
@@ -530,6 +535,7 @@ test("players reaching the target together enter a deathmatch excluding other pl
   assert.equal(game.phase, "roundEnd");
   assert.deepEqual(game.deathmatch, ["player-0", "player-1"]);
   game.startRound();
+  game.beginCountdown();
   assert.deepEqual(
     game.heads.map((head) => head.id),
     ["player-0", "player-1"],

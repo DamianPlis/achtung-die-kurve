@@ -128,8 +128,8 @@ export class Game {
       );
     this.round++;
     this.winnerId = undefined;
-    this.phase = "countdown";
-    this.countdown = 180;
+    this.phase = "ready";
+    this.countdown = 0;
     this.clearTrails();
     this.effects = { darkUntil: 0 };
     this.heads = [];
@@ -186,6 +186,13 @@ export class Game {
       });
       this.headOwners.set(this.headIndex, player.id);
     });
+  }
+
+  beginCountdown() {
+    if (this.phase !== "ready")
+      throw new Error("The round is not ready for countdown.");
+    this.phase = "countdown";
+    this.countdown = 180;
   }
 
   private clearTrails() {
@@ -388,7 +395,8 @@ export class Game {
       if (surviving.has(player.id)) player.score += deadOwners.length;
     if (
       surviving.size <= 1 &&
-      (this.phase === "playing" ||
+      (this.phase === "ready" ||
+        this.phase === "playing" ||
         this.phase === "paused" ||
         this.phase === "countdown")
     ) {
@@ -457,7 +465,7 @@ export class Game {
   }
 
   step(): boolean {
-    if (this.phase === "paused") return false;
+    if (this.phase === "paused" || this.phase === "ready") return false;
     this.tick++;
     if (this.phase === "countdown") {
       this.countdown--;

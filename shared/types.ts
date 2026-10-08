@@ -17,7 +17,13 @@ export const POWERS = [
 ] as const;
 export type Power = (typeof POWERS)[number];
 export type Phase =
-  "lobby" | "countdown" | "playing" | "paused" | "roundEnd" | "finished";
+  | "lobby"
+  | "ready"
+  | "countdown"
+  | "playing"
+  | "paused"
+  | "roundEnd"
+  | "finished";
 
 export interface GameSettings {
   speed: "slow" | "normal" | "fast";
@@ -126,7 +132,7 @@ export type ClientMessage =
       seq?: number;
       inputs: { id: string; turn: Turn; power?: boolean }[];
     }
-  | { type: "start" | "next" | "lobby" | "pause" }
+  | { type: "start" | "countdown" | "next" | "lobby" | "pause" }
   | { type: "settings"; settings: Partial<GameSettings> }
   | { type: "ping"; at: number };
 export type ServerMessage =

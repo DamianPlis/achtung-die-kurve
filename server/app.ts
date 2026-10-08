@@ -17,28 +17,14 @@ import type {
   Turn,
 } from "../shared/types.js";
 import { POWERS } from "../shared/types.js";
+import { PLAYER_PALETTE } from "../shared/player-palette.js";
 import { DEFAULT_SETTINGS, Game, MAX_PLAYERS } from "./game.js";
-
-const COLORS = [
-  "#f36a6e",
-  "#f5ad63",
-  "#91ce7d",
-  "#79b9f5",
-  "#b394e8",
-  "#e48db9",
-  "#ffe46b",
-  "#54ddd0",
-  "#ff956f",
-  "#ffffff",
-  "#b9ec54",
-  "#6893ef",
-  "#ffa4da",
-  "#c4a16e",
-  "#ff454c",
-  "#73f6ff",
-  "#dfe9ad",
-  "#c0c0c0",
-];
+const COLOR_NAMES = new Set(
+  PLAYER_PALETTE.flatMap(({ name, color }) => [
+    name.toLowerCase(),
+    color.toLowerCase(),
+  ]),
+);
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 interface Device {
   socket?: WebSocket;
@@ -198,6 +184,9 @@ export function createGameServer({
     )
       fail("A player identifier is already in this room.");
     const used = new Set(others.map((player) => player.color));
+    const usedNames = new Set(
+      others.map((player) => player.name.toLowerCase()),
+    );
     const existing = new Map(
       room.game.players
         .filter((player) => player.deviceId === deviceId)
@@ -205,21 +194,31 @@ export function createGameServer({
     );
     const own: Player[] = players.map((player) => {
       const old = existing.get(player.id);
-      let color = old?.color;
-      if (!color || used.has(color))
-        color =
-          COLORS.find((entry) => !used.has(entry)) ??
-          Array.from(
-            { length: MAX_PLAYERS },
-            (_, index) =>
-              `hsl(${Math.round(index * 137.508) % 360} 85% ${index % 2 ? 68 : 55}%)`,
-          ).find((entry) => !used.has(entry))!;
-      used.add(color);
+      const requested = PLAYER_PALETTE.find(
+        (entry) =>
+          entry.name.toLowerCase() === player.name.toLowerCase() ||
+          entry.color.toLowerCase() === player.name.toLowerCase(),
+      );
+      const identity =
+        PLAYER_PALETTE.find((entry) => entry.color === old?.color) ??
+        (requested && !used.has(requested.color) ? requested : undefined) ??
+        PLAYER_PALETTE.find((entry) => !used.has(entry.color))!;
+      used.add(identity.color);
+      let name = COLOR_NAMES.has(player.name.toLowerCase())
+        ? identity.name
+        : player.name;
+      const baseName = name;
+      for (let suffix = 2; usedNames.has(name.toLowerCase()); suffix++) {
+        const ending = ` (${suffix})`;
+        name = `${baseName.slice(0, 24 - ending.length)}${ending}`;
+      }
+      usedNames.add(name.toLowerCase());
       return {
         ...player,
+        name,
         power: player.power ?? "none",
         deviceId,
-        color,
+        color: identity.color,
         score: old?.score ?? 0,
         charges: old?.charges ?? 2,
         connected: true,
@@ -407,6 +406,7 @@ export function createGameServer({
           fail("The match has already started.");
         room.game.start();
         broadcastRoom(room);
+        broadcastFrame(room);
         break;
       case "next":
         requireHost(session);
@@ -414,6 +414,15 @@ export function createGameServer({
           fail("Wait for the round to finish.");
         room.game.startRound();
         broadcastRoom(room);
+        broadcastFrame(room);
+        break;
+      case "countdown":
+        requireHost(session);
+        if (room.game.phase !== "ready")
+          fail("Wait for players to get ready.");
+        room.game.beginCountdown();
+        broadcastRoom(room);
+        broadcastFrame(room);
         break;
       case "lobby":
         requireHost(session);

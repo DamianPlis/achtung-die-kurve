@@ -138,6 +138,8 @@ test("three six-player devices share one authoritative match, with spectators an
     second.send({ type: "input", inputs: [{ id: "player-1-0", turn: 1 }] });
     assert.match((await second.wait("error")).message, /own device/);
     host.send({ type: "start" });
+    await host.wait("room", (message) => message.room.phase === "ready");
+    host.send({ type: "countdown" });
     await host.wait("room", (message) => message.room.phase === "countdown");
     const room = app.rooms.get(code)!;
     assert.equal(room.game.heads.length, 18);
@@ -300,6 +302,8 @@ test("fifty players on nine devices share powers, map size, holes and private mo
       50,
     );
     host.send({ type: "start" });
+    await host.wait("room", (message) => message.room.phase === "ready");
+    host.send({ type: "countdown" });
     const countdown = await host.wait(
       "room",
       (message) => message.room.phase === "countdown",

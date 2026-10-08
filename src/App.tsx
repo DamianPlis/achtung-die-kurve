@@ -8,6 +8,7 @@ import type {
   ServerMessage,
   Turn,
 } from "../shared/types";
+import { PLAYER_PALETTE } from "../shared/player-palette";
 import GameCanvas, { type FrameData } from "./GameCanvas";
 import type { PredictionInputState } from "./prediction";
 import { DEFAULT_KEYS, keyLabel, newId, steering } from "./controls";
@@ -30,15 +31,8 @@ import {
 } from "@/components/ui/table";
 
 type Slot = LocalPlayer & { enabled: boolean; keys: string[] };
-const COLORS = [
-  "#f36a6e",
-  "#f5ad63",
-  "#91ce7d",
-  "#79b9f5",
-  "#b394e8",
-  "#e48db9",
-];
-const NAMES = ["Red", "Orange", "Green", "Blue", "Purple", "Pink"];
+const COLORS = PLAYER_PALETTE.slice(0, 6).map(({ color }) => color);
+const NAMES = PLAYER_PALETTE.slice(0, 6).map(({ name }) => name);
 const DEFAULT_SETTINGS: GameSettings = {
   speed: "normal",
   targetScore: 0,
@@ -113,6 +107,7 @@ export default function App() {
   const [room, setRoom] = useState<RoomView | null>(null);
   const roomRef = useRef(room);
   roomRef.current = room;
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -220,8 +215,11 @@ export default function App() {
           if (
             message.type === "snapshot" ||
             message.room.round !== previous?.round ||
+            (message.room.phase === "ready" &&
+              previous?.phase !== "ready") ||
             (message.room.phase === "countdown" &&
-              previous?.phase !== "countdown")
+              previous?.phase !== "countdown" &&
+              previous?.phase !== "ready")
           ) {
             frameRef.current.reset++;
             inputRef.current.history = [];
@@ -421,6 +419,8 @@ export default function App() {
         event.preventDefault();
         if (!event.repeat && roomRef.current?.phase === "lobby")
           send({ type: "start" });
+        else if (!event.repeat && roomRef.current?.phase === "ready")
+          send({ type: "countdown" });
         else if (!event.repeat && roomRef.current?.phase === "roundEnd")
           send({ type: "next" });
         else if (
@@ -559,7 +559,21 @@ export default function App() {
       await navigator.clipboard.writeText(link);
       setToast("Invite link copied");
     } catch {
-      setToast(`Invite: ${link}`);
+      const input = document.createElement("textarea");
+      input.value = link;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      let copied = false;
+      try {
+        document.body.appendChild(input);
+        input.select();
+        copied = document.execCommand("copy");
+      } catch {
+        // Legacy clipboard access can also be blocked by browser policy.
+      } finally {
+        input.remove();
+      }
+      setToast(copied ? "Invite link copied" : `Invite: ${link}`);
     }
   }
   function leaveRoom() {
@@ -614,6 +628,10 @@ export default function App() {
                     const actual = room?.players.find(
                       (player) => player.id === slot.id,
                     );
+                    const displayedName =
+                      editingNameId === slot.id
+                        ? slot.name
+                        : (actual?.name ?? slot.name);
                     const color = actual?.color ?? COLORS[i];
                     return (
                       <TableRow
@@ -628,7 +646,7 @@ export default function App() {
                               className={s.playerToggle}
                               role="switch"
                               aria-checked={slot.enabled}
-                              aria-label={`Enable ${slot.name}`}
+                              aria-label={`Enable ${displayedName}`}
                               disabled={!!room && spectator}
                               onClick={() =>
                                 changeSlot(slot.id, { enabled: !slot.enabled })
@@ -641,9 +659,10 @@ export default function App() {
                             <Input
                               className={s.customNameInput}
                               aria-label={`Player ${i + 1} name`}
-                              value={slot.name}
+                              value={displayedName}
                               maxLength={24}
                               disabled={!!room && spectator}
+                              onFocus={() => setEditingNameId(slot.id)}
                               onChange={(event) =>
                                 changeSlot(
                                   slot.id,
@@ -651,11 +670,12 @@ export default function App() {
                                   false,
                                 )
                               }
-                              onBlur={() =>
+                              onBlur={() => {
                                 changeSlot(slot.id, {
                                   name: slot.name.trim() || NAMES[i],
-                                })
-                              }
+                                });
+                                setEditingNameId(null);
+                              }}
                             />
                           </div>
                         </TableCell>
@@ -665,7 +685,7 @@ export default function App() {
                               variant="ghost"
                               className={s.keyButton}
                               onClick={() => setBinding({ id: slot.id, index })}
-                              aria-label={`Change ${slot.name} ${["left", "right", "power"][index]} key`}
+                              aria-label={`Change ${displayedName} ${["left", "right", "power"][index]} key`}
                               title="Click, then press a new key"
                             >
                               {binding?.id === slot.id &&
@@ -678,7 +698,7 @@ export default function App() {
                         <TableCell>
                           <NativeSelect
                             className={s.power}
-                            aria-label={`${slot.name} ability`}
+                            aria-label={`${displayedName} ability`}
                             value={slot.power ?? "none"}
                             disabled={!!room && spectator}
                             onChange={(event) =>
@@ -863,7 +883,9 @@ export default function App() {
                     projector={projector}
                   />
                   {(room.phase !== "playing" || !connected) && (
-                    <div className={s.arenaOverlay}>
+                    <div
+                      className={`${s.arenaOverlay} ${room.phase === "ready" ? s.readyOverlay : ""}`}
+                    >
                       {!connected ? (
                         <h2 className={s.overlayTitle}>Reconnecting…</h2>
                       ) : room.phase === "paused" ? (
@@ -878,6 +900,22 @@ export default function App() {
                             </Button>
                           )}
                         </>
+                      ) : room.phase === "ready" ? (
+                        <div className={s.readyPrompt}>
+                          <h2 className={s.overlayTitle}>
+                            Find your name on the board
+                          </h2>
+                          <p className={s.overlayCopy}>
+                            {host ? (
+                              <>
+                                When everyone’s ready, press <kbd>SPACE</kbd> to
+                                start the countdown.
+                              </>
+                            ) : (
+                              "Find your name on the board. Waiting for the host to start the countdown."
+                            )}
+                          </p>
+                        </div>
                       ) : room.phase === "countdown" ? (
                         <span className={s.countdown}>{countdown}</span>
                       ) : (
@@ -913,6 +951,11 @@ export default function App() {
                             </Button>
                           ) : (
                             <span className={s.muted}>Waiting for host</span>
+                          )}
+                          {room.phase === "roundEnd" && (
+                            <p className={s.overlayCopy}>
+                              Press <kbd>SPACE</kbd> to prepare the next round.
+                            </p>
                           )}
                         </>
                       )}

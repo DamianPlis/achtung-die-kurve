@@ -516,6 +516,24 @@
   text-align: center;
   background: #111111b3;
 }
+.readyOverlay {
+  justify-content: flex-end;
+  background: transparent;
+  pointer-events: none;
+}
+.readyPrompt {
+  max-width: min(100%, 560px);
+  padding: 10px 14px;
+  border: 1px solid #555;
+  background: #111d;
+}
+.readyPrompt .overlayTitle {
+  font-size: 16px;
+}
+.readyPrompt .overlayCopy {
+  margin-top: 4px;
+  color: #eee;
+}
 .countdown {
   color: #eee;
   font-size: 64px;
