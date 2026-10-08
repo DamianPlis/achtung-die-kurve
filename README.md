@@ -1,6 +1,6 @@
-# Achtung, die Kurve! — Classroom edition
+# Achtung, die Kurve!
 
-A fresh multiplayer implementation inspired by [achtungkurve.com](https://achtungkurve.com/) and its [reference repository](https://github.com/maechler/kurve). No original source, artwork, audio, or styles are included. React + TypeScript, CSS Modules, Canvas, and a small Node WebSocket server.
+A fresh multiplayer implementation inspired by [achtungkurve.com](https://achtungkurve.com/) and its [reference repository](https://github.com/maechler/kurve). No original source, artwork, audio, or styles are included. React + TypeScript, shadcn/ui with Tailwind, CSS Modules, Canvas, and a small Node WebSocket server.
 
 ## Run on school Wi-Fi
 
@@ -17,7 +17,7 @@ Open **http://localhost:5173** on the host computer. The terminal prints the LAN
 2. The host clicks **Create room** and shares the five-character code or invite link.
 3. Other devices open the host's address, choose **Join a room**, and enter the code. The room supports 18 players total.
 4. The host clicks **Start game** or presses Space. Space pauses/resumes a running round and starts the next round after it ends.
-5. A projector browser can **Join as a spectator** without using a player slot, then select **Projector view** and fullscreen.
+5. A projector browser can **Spectate** without using a player slot, then select **Projector view** and fullscreen.
 
 Phones and tablets have touch steering buttons. A keyboard's physical key rollover may limit how many simultaneous keys it detects; spreading players across more devices avoids that hardware limit.
 

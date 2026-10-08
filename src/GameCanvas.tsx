@@ -85,7 +85,7 @@ export default function GameCanvas({ room, frameRef, projector }: {
           context!.setLineDash([]);
         }
         if (currentRoom.phase === 'countdown') {
-          context!.font = `${projectorRef.current ? 18 : 14}px "Trebuchet MS", sans-serif`;
+          context!.font = `${projectorRef.current ? 18 : 14}px Arial, sans-serif`;
           context!.textAlign = 'center';
           context!.fillText(player.name, x, Math.max(22, y - 18));
         }
