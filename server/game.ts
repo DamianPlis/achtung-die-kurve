@@ -21,8 +21,11 @@ export const DEFAULT_SETTINGS: GameSettings = {
   speed: "normal",
   targetScore: 0,
   gaps: true,
+  gapSize: "large",
+  customGapSize: 24,
 };
 const SPEED = { slow: 60, normal: 84, fast: 115 };
+const GAP_SIZE = { small: 8, medium: 16, large: 24 };
 const GRID = 2;
 const DURATION: Partial<Record<Power, number>> = {
   boost: 240,
@@ -478,7 +481,11 @@ export class Game {
       const control = this.controls.get(head.ownerId)!;
       this.attributes(head, player, control);
       if (this.settings.gaps && this.tick >= head.nextGap) {
-        head.gapUntil = this.tick + 8;
+        head.gapUntil = this.tick + (
+          this.settings.gapSize === "custom"
+            ? this.settings.customGapSize
+            : GAP_SIZE[this.settings.gapSize]
+        );
         head.nextGap = this.tick + this.gapDelay();
       }
       head.gap = head.invisible || this.tick < head.gapUntil;

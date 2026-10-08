@@ -14,6 +14,7 @@ import { DEFAULT_KEYS, keyLabel, newId, steering } from "./controls";
 import s from "./App.module.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import {
   NativeSelect,
   NativeSelectOption,
@@ -42,6 +43,8 @@ const DEFAULT_SETTINGS: GameSettings = {
   speed: "normal",
   targetScore: 0,
   gaps: true,
+  gapSize: "large",
+  customGapSize: 24,
 };
 const POWER_NAMES: Record<Power, string> = {
   none: "No superpower",
@@ -1115,6 +1118,39 @@ function GameOptions({
           <NativeSelectOption value="50">50 points</NativeSelectOption>
         </NativeSelect>
       </div>
+      <div className={s.settingRow}>
+        <label htmlFor="gap-size">Gap size</label>
+        <NativeSelect
+          id="gap-size"
+          className={s.select}
+          value={settings.gapSize}
+          onChange={(event) =>
+            change({ gapSize: event.target.value as GameSettings["gapSize"] })
+          }
+        >
+          <NativeSelectOption value="small">Small</NativeSelectOption>
+          <NativeSelectOption value="medium">Medium</NativeSelectOption>
+          <NativeSelectOption value="large">Large</NativeSelectOption>
+          <NativeSelectOption value="custom">Custom</NativeSelectOption>
+        </NativeSelect>
+      </div>
+      {settings.gapSize === "custom" && (
+        <div className={s.settingRow}>
+          <span id="custom-gap-size-label">Custom length</span>
+          <Slider
+            aria-labelledby="custom-gap-size-label"
+            className="w-36"
+            min={8}
+            max={50}
+            step={1}
+            value={[settings.customGapSize]}
+            onValueChange={(value) =>
+              change({ customGapSize: value[0] ?? settings.customGapSize })
+            }
+          />
+          <output>{settings.customGapSize} ticks</output>
+        </div>
+      )}
       <div className={s.settingRow}>
         <span id="gaps-label">Gaps</span>
         <Switch

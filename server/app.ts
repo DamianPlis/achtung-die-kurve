@@ -109,6 +109,8 @@ function settings(value: unknown, current = DEFAULT_SETTINGS): GameSettings {
   const speed = value.speed ?? current.speed;
   const targetScore = value.targetScore ?? current.targetScore;
   const gaps = value.gaps ?? current.gaps;
+  const gapSize = value.gapSize ?? current.gapSize;
+  const customGapSize = value.customGapSize ?? current.customGapSize;
   if (speed !== "slow" && speed !== "normal" && speed !== "fast")
     fail("Invalid speed.");
   if (
@@ -119,7 +121,21 @@ function settings(value: unknown, current = DEFAULT_SETTINGS): GameSettings {
   )
     fail("Target score must be between 0 and 200.");
   if (typeof gaps !== "boolean") fail("Invalid trail gap setting.");
-  return { speed, targetScore, gaps };
+  if (
+    gapSize !== "small" &&
+    gapSize !== "medium" &&
+    gapSize !== "large" &&
+    gapSize !== "custom"
+  )
+    fail("Invalid trail gap size.");
+  if (
+    typeof customGapSize !== "number" ||
+    !Number.isInteger(customGapSize) ||
+    customGapSize < 8 ||
+    customGapSize > 50
+  )
+    fail("Custom gap size must be between 8 and 50 ticks.");
+  return { speed, targetScore, gaps, gapSize, customGapSize };
 }
 
 export function createGameServer({

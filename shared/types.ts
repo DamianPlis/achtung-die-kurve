@@ -23,6 +23,8 @@ export interface GameSettings {
   speed: "slow" | "normal" | "fast";
   targetScore: number;
   gaps: boolean;
+  gapSize: "small" | "medium" | "large" | "custom";
+  customGapSize: number;
 }
 export interface LocalPlayer {
   id: string;
