@@ -414,6 +414,50 @@
   gap: 8px 18px;
   margin: 12px 0;
 }
+.powerManager {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #444;
+}
+.powerManager .roomHeading {
+  margin-bottom: 8px;
+}
+.powerManagerControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.powerManagerControls [data-slot="native-select-wrapper"] {
+  flex: 1 1 180px;
+}
+.powerManagerControls select {
+  width: 100%;
+}
+.powerManagerList {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  margin-top: 10px;
+  overflow-y: auto;
+}
+.powerManagerRow {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) minmax(125px, 1.4fr);
+  align-items: center;
+  gap: 8px;
+}
+.powerManagerRow [data-slot="native-select-wrapper"],
+.powerManagerRow select {
+  width: 100%;
+  min-width: 0;
+}
+.powerManagerName {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .member {
   display: flex;
   align-items: center;
@@ -516,12 +560,10 @@
   text-align: center;
   background: #111111b3;
 }
-.readyOverlay {
-  justify-content: flex-end;
-  background: transparent;
-  pointer-events: none;
-}
 .readyPrompt {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   max-width: min(100%, 560px);
   padding: 10px 14px;
   border: 1px solid #555;
@@ -658,6 +700,10 @@
 .projector .gameLayout {
   display: block;
 }
+.projector .gameLayout.projectorReady {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+}
 .projector .arenaPanel {
   width: min(100%, calc((100dvh - 105px) * 1.5));
   margin: 0 auto;
@@ -717,6 +763,10 @@
     flex-wrap: wrap;
   }
   .gameLayout {
+    display: flex;
+    flex-direction: column;
+  }
+  .projector .gameLayout.projectorReady {
     display: flex;
     flex-direction: column;
   }

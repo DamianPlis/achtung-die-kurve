@@ -56,9 +56,17 @@ const POWER_NAMES: Record<Power, string> = {
   holes: "Shoot holes",
   random: "Random",
 };
+const POWER_ORDER = Object.keys(POWER_NAMES) as Power[];
+
+function isPowerForced(room: RoomView | null, id: string) {
+  return !!room &&
+    (room.powerRules.everyone !== null ||
+      room.powerRules.players[id] !== undefined);
+}
 
 function loadSlots(): Slot[] {
   try {
+    const rejoiningRoom = !!sessionStorage.getItem("kurve-room");
     const saved = JSON.parse(
       sessionStorage.getItem("kurve-players") ?? "null",
     ) as Slot[] | null;
@@ -71,14 +79,17 @@ function loadSlots(): Slot[] {
           slot.keys?.length === 3,
       )
     )
-      return saved;
+      return saved.map((slot) => ({
+        ...slot,
+        enabled: rejoiningRoom && slot.enabled,
+      }));
   } catch {
     /* A corrupt preference should never prevent opening the game. */
   }
   return NAMES.map((name, i) => ({
     id: newId(),
     name,
-    enabled: i < 2,
+    enabled: false,
     keys: DEFAULT_KEYS[i],
     power: "none",
   }));
@@ -107,6 +118,7 @@ export default function App() {
   const [room, setRoom] = useState<RoomView | null>(null);
   const roomRef = useRef(room);
   roomRef.current = room;
+  const [powerPreset, setPowerPreset] = useState<Power | "">("");
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [pending, setPending] = useState(false);
@@ -317,6 +329,9 @@ export default function App() {
     sessionStorage.setItem("kurve-players", JSON.stringify(slots));
   }, [slots]);
   useEffect(() => {
+    setPowerPreset(room?.powerRules.everyone ?? "");
+  }, [room?.powerRules.everyone]);
+  useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 3000);
     return () => clearTimeout(timer);
@@ -417,7 +432,11 @@ export default function App() {
         roomRef.current?.hostDeviceId === deviceId
       ) {
         event.preventDefault();
-        if (!event.repeat && roomRef.current?.phase === "lobby")
+        if (
+          !event.repeat &&
+          roomRef.current?.phase === "lobby" &&
+          roomRef.current.players.filter((player) => player.connected).length >= 2
+        )
           send({ type: "start" });
         else if (!event.repeat && roomRef.current?.phase === "ready")
           send({ type: "countdown" });
@@ -431,6 +450,32 @@ export default function App() {
         )
           send({ type: "pause" });
         return;
+      }
+      if (
+        (roomRef.current?.phase ?? "lobby") === "lobby" &&
+        !spectatorRef.current
+      ) {
+        const slot = slotsRef.current.find((candidate) =>
+          candidate.keys.includes(event.code),
+        );
+        if (slot) {
+          event.preventDefault();
+          if (event.repeat) return;
+          if (slot.keys[2] === event.code) {
+            if (isPowerForced(roomRef.current, slot.id)) {
+              if (!slot.enabled) changeSlot(slot.id, { enabled: true });
+            } else {
+              const index = POWER_ORDER.indexOf(slot.power ?? "none");
+              changeSlot(slot.id, {
+                enabled: true,
+                power: POWER_ORDER[(index + 1) % POWER_ORDER.length],
+              });
+            }
+          } else if (!slot.enabled) {
+            changeSlot(slot.id, { enabled: true });
+          }
+          return;
+        }
       }
       if (
         !slotsRef.current.some(
@@ -628,6 +673,7 @@ export default function App() {
                     const actual = room?.players.find(
                       (player) => player.id === slot.id,
                     );
+                    const powerForced = isPowerForced(room, slot.id);
                     const displayedName =
                       editingNameId === slot.id
                         ? slot.name
@@ -699,8 +745,16 @@ export default function App() {
                           <NativeSelect
                             className={s.power}
                             aria-label={`${displayedName} ability`}
-                            value={slot.power ?? "none"}
-                            disabled={!!room && spectator}
+                            value={
+                              powerForced
+                                ? (actual?.power ??
+                                  room?.powerRules.players[slot.id] ??
+                                  room?.powerRules.everyone ??
+                                  slot.power ??
+                                  "none")
+                                : (slot.power ?? "none")
+                            }
+                            disabled={(!!room && spectator) || powerForced}
                             onChange={(event) =>
                               changeSlot(slot.id, {
                                 power: event.target
@@ -722,6 +776,11 @@ export default function App() {
                   })}
                 </TableBody>
               </Table>
+              {!(room && spectator) && (
+                <p className={s.muted}>
+                  Press any player key to join; in the lobby, their power key cycles superpowers.
+                </p>
+              )}
             </section>
             <section className={s.roomPanel} aria-label="Multiplayer room">
               {!room ? (
@@ -830,10 +889,119 @@ export default function App() {
                       </span>
                     ))}
                   </div>
+                  {host && room.phase === "lobby" && (
+                    <section
+                      className={s.powerManager}
+                      aria-label="Party superpower management"
+                    >
+                      <h3 className={s.roomHeading}>Superpower rules</h3>
+                      <div className={s.powerManagerControls}>
+                        <NativeSelect
+                          className={s.select}
+                          aria-label="Superpower for everyone"
+                          value={powerPreset}
+                          onChange={(event) =>
+                            setPowerPreset(event.target.value as Power | "")
+                          }
+                        >
+                          <NativeSelectOption value="">
+                            Player choice
+                          </NativeSelectOption>
+                          {POWER_ORDER.map((power) => (
+                            <NativeSelectOption key={power} value={power}>
+                              {POWER_NAMES[power].toLowerCase()}
+                            </NativeSelectOption>
+                          ))}
+                        </NativeSelect>
+                        <Button
+                          className={s.button}
+                          disabled={!connected}
+                          onClick={() =>
+                            send({
+                              type: "powerRules",
+                              rules: {
+                                everyone: powerPreset || null,
+                                players: {},
+                              },
+                            })
+                          }
+                        >
+                          Apply to everyone
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className={s.button}
+                          disabled={!connected}
+                          onClick={() =>
+                            send({
+                              type: "powerRules",
+                              rules: { everyone: "random", players: {} },
+                            })
+                          }
+                        >
+                          Everyone random
+                        </Button>
+                      </div>
+                      <p className={s.muted}>
+                        Applying a party setting clears individual rules; set per-player exceptions below.
+                      </p>
+                      <div className={s.powerManagerList}>
+                        {room.players.map((player) => (
+                          <div className={s.powerManagerRow} key={player.id}>
+                            <span
+                              className={s.powerManagerName}
+                              style={{ color: player.color }}
+                            >
+                              {player.name}
+                              {!player.connected ? " (offline)" : ""}
+                            </span>
+                            <NativeSelect
+                              className={s.select}
+                              aria-label={`Force superpower for ${player.name}`}
+                              value={room.powerRules.players[player.id] ?? ""}
+                              disabled={!connected}
+                              onChange={(event) => {
+                                const players = {
+                                  ...room.powerRules.players,
+                                };
+                                if (event.target.value)
+                                  players[player.id] = event.target.value as Power;
+                                else delete players[player.id];
+                                send({
+                                  type: "powerRules",
+                                  rules: {
+                                    everyone: room.powerRules.everyone,
+                                    players,
+                                  },
+                                });
+                              }}
+                            >
+                              <NativeSelectOption value="">
+                                {room.powerRules.everyone
+                                  ? `Everyone: ${POWER_NAMES[room.powerRules.everyone].toLowerCase()}`
+                                  : "Player choice"}
+                              </NativeSelectOption>
+                              {POWER_ORDER.map((power) => (
+                                <NativeSelectOption key={power} value={power}>
+                                  {POWER_NAMES[power].toLowerCase()}
+                                </NativeSelectOption>
+                              ))}
+                            </NativeSelect>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
                   <div className={s.roomActions}>
                     <span className={s.muted}>
                       {room.players.length} / 50 players
                     </span>
+                    {room.players.filter((player) => player.connected).length <
+                      2 && (
+                      <span className={s.muted}>
+                        At least two connected players are needed to start.
+                      </span>
+                    )}
                     {host ? (
                       <Button
                         className={`${s.button} ${s.primaryButton}`}
@@ -861,7 +1029,9 @@ export default function App() {
           </div>
         ) : (
           <>
-            <div className={s.gameLayout}>
+            <div
+              className={`${s.gameLayout} ${projector && room.phase === "ready" ? s.projectorReady : ""}`}
+            >
               <section className={s.arenaPanel}>
                 <div className={s.arenaHeader}>
                   <span>
@@ -882,10 +1052,9 @@ export default function App() {
                     inputRef={inputRef}
                     projector={projector}
                   />
-                  {(room.phase !== "playing" || !connected) && (
-                    <div
-                      className={`${s.arenaOverlay} ${room.phase === "ready" ? s.readyOverlay : ""}`}
-                    >
+                  {room.phase !== "ready" &&
+                    (room.phase !== "playing" || !connected) && (
+                    <div className={s.arenaOverlay}>
                       {!connected ? (
                         <h2 className={s.overlayTitle}>Reconnecting…</h2>
                       ) : room.phase === "paused" ? (
@@ -900,22 +1069,6 @@ export default function App() {
                             </Button>
                           )}
                         </>
-                      ) : room.phase === "ready" ? (
-                        <div className={s.readyPrompt}>
-                          <h2 className={s.overlayTitle}>
-                            Find your name on the board
-                          </h2>
-                          <p className={s.overlayCopy}>
-                            {host ? (
-                              <>
-                                When everyone’s ready, press <kbd>SPACE</kbd> to
-                                start the countdown.
-                              </>
-                            ) : (
-                              "Find your name on the board. Waiting for the host to start the countdown."
-                            )}
-                          </p>
-                        </div>
                       ) : room.phase === "countdown" ? (
                         <span className={s.countdown}>{countdown}</span>
                       ) : (
@@ -986,8 +1139,25 @@ export default function App() {
                   </div>
                 )}
               </section>
-              {!projector && (
+              {(!projector || room.phase === "ready") && (
                 <aside className={s.scoreboard}>
+                  {room.phase === "ready" && (
+                    <div className={s.readyPrompt}>
+                      <h2 className={s.overlayTitle}>
+                        Find your name on the board
+                      </h2>
+                      <p className={s.overlayCopy}>
+                        {host ? (
+                          <>
+                            When everyone’s ready, press <kbd>SPACE</kbd> to
+                            start the countdown.
+                          </>
+                        ) : (
+                          "Waiting for the host to start the countdown."
+                        )}
+                      </p>
+                    </div>
+                  )}
                   <div className={s.panelHeader}>
                     <span>Score</span>
                     <span className={s.muted}>First to {target}</span>

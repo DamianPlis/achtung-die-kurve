@@ -12,6 +12,8 @@ import type {
   GameSettings,
   LocalPlayer,
   Player,
+  Power,
+  PowerRules,
   RoomView,
   ServerMessage,
   Turn,
@@ -37,6 +39,8 @@ interface Room {
   hostDeviceId: string;
   game: Game;
   devices: Map<string, Device>;
+  powerRules: PowerRules;
+  selectedPowers: Map<string, Power>;
 }
 interface Session {
   room?: Room;
@@ -89,6 +93,27 @@ function parsePlayers(value: unknown): LocalPlayer[] {
       fail("Choose a supported power.");
     return { id, name: item.name.trim(), power: power as LocalPlayer["power"] };
   });
+}
+function parsePowerRules(value: unknown, roomPlayers: Player[]): PowerRules {
+  if (!record(value) || !record(value.players))
+    fail("Invalid superpower rules.");
+  const everyone = value.everyone ?? null;
+  if (
+    everyone !== null &&
+    (typeof everyone !== "string" || !POWERS.some((power) => power === everyone))
+  )
+    fail("Choose a supported superpower.");
+  const players: Record<string, Power> = Object.create(null);
+  const playerIds = new Set(roomPlayers.map((player) => player.id));
+  const entries = Object.entries(value.players);
+  if (entries.length > MAX_PLAYERS) fail("Invalid superpower rules.");
+  for (const [id, power] of entries) {
+    if (!playerIds.has(id)) fail("Choose a player in this room.");
+    if (typeof power !== "string" || !POWERS.some((entry) => entry === power))
+      fail("Choose a supported superpower.");
+    players[id] = power as Power;
+  }
+  return { everyone: everyone as Power | null, players };
 }
 function settings(value: unknown, current = DEFAULT_SETTINGS): GameSettings {
   if (!record(value)) fail("Invalid game settings.");
@@ -158,6 +183,7 @@ export function createGameServer({
       code: room.code,
       hostDeviceId: room.hostDeviceId,
       players: room.game.players,
+      powerRules: room.powerRules,
       settings: room.game.settings,
       phase: room.game.phase,
       round: room.game.round,
@@ -213,10 +239,23 @@ export function createGameServer({
         name = `${baseName.slice(0, 24 - ending.length)}${ending}`;
       }
       usedNames.add(name.toLowerCase());
+      const requestedPower = player.power ?? "none";
+      const isForced =
+        room.powerRules.everyone !== null ||
+        room.powerRules.players[player.id] !== undefined;
+      const selectedPower =
+        isForced && room.selectedPowers.has(player.id)
+          ? room.selectedPowers.get(player.id)!
+          : requestedPower;
+      if (!isForced || !room.selectedPowers.has(player.id))
+        room.selectedPowers.set(player.id, requestedPower);
       return {
         ...player,
         name,
-        power: player.power ?? "none",
+        power:
+          room.powerRules.players[player.id] ??
+          room.powerRules.everyone ??
+          selectedPower,
         deviceId,
         color: identity.color,
         score: old?.score ?? 0,
@@ -225,6 +264,11 @@ export function createGameServer({
       };
     });
     room.game.players = [...others, ...own];
+    const playerIds = new Set(room.game.players.map((player) => player.id));
+    for (const id of room.selectedPowers.keys())
+      if (!playerIds.has(id)) room.selectedPowers.delete(id);
+    for (const id of Object.keys(room.powerRules.players))
+      if (!playerIds.has(id)) delete room.powerRules.players[id];
     room.devices.get(deviceId)!.playerIds = own.map((player) => player.id);
   }
   function bind(
@@ -328,6 +372,8 @@ export function createGameServer({
               : settings(value.settings),
           ),
           devices: new Map(),
+          powerRules: { everyone: null, players: Object.create(null) },
+          selectedPowers: new Map(),
         };
         bind(socket, room, deviceId, sessionToken, players, false);
         rooms.set(code, room);
@@ -398,6 +444,19 @@ export function createGameServer({
         if (room.game.phase !== "lobby")
           fail("Settings can only be changed in the lobby.");
         room.game.settings = settings(value.settings, room.game.settings);
+        broadcastRoom(room);
+        break;
+      case "powerRules":
+        requireHost(session);
+        if (room.game.phase !== "lobby")
+          fail("Superpower rules can only be changed in the lobby.");
+        room.powerRules = parsePowerRules(value.rules, room.game.players);
+        for (const player of room.game.players)
+          player.power =
+            room.powerRules.players[player.id] ??
+            room.powerRules.everyone ??
+            room.selectedPowers.get(player.id) ??
+            player.power;
         broadcastRoom(room);
         break;
       case "start":

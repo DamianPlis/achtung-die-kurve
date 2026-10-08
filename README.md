@@ -13,7 +13,7 @@ npm run dev
 
 Open **http://localhost:5173** on the host computer. The terminal prints the LAN addresses for other devices, for example `http://192.168.1.42:5173`. All players must open the **same host computer's address**; `localhost` on another device points at that other device.
 
-1. Select up to six players on each device. Click their color, edit their name, and click a key to rebind it.
+1. Players start unselected. Select up to six on each device by pressing any of their keys. In the lobby, press a player's power key to cycle superpowers; click their color, edit their name, and click a key to rebind it. The host can force one power for everyone (including a one-click random preset) or set different powers per player. At least two connected players are needed to start.
 2. The host clicks **Create room** and shares the five-character code or invite link.
 3. Other devices open the host's address, choose **Join a room**, and enter the code. The room supports 50 players total.
 4. The host clicks **Start game** or presses Space. Space pauses/resumes a running round and starts the next round after it ends.

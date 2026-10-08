@@ -46,10 +46,15 @@ export interface Player extends LocalPlayer {
   roundPower?: Power;
   charges: number;
 }
+export interface PowerRules {
+  everyone: Power | null;
+  players: Record<string, Power>;
+}
 export interface RoomView {
   code: string;
   hostDeviceId: string;
   players: Player[];
+  powerRules: PowerRules;
   settings: GameSettings;
   phase: Phase;
   round: number;
@@ -134,6 +139,7 @@ export type ClientMessage =
     }
   | { type: "start" | "countdown" | "next" | "lobby" | "pause" }
   | { type: "settings"; settings: Partial<GameSettings> }
+  | { type: "powerRules"; rules: PowerRules }
   | { type: "ping"; at: number };
 export type ServerMessage =
   | { type: "room"; room: RoomView; deviceId: string }
