@@ -16,7 +16,8 @@ import type {
   ServerMessage,
   Turn,
 } from "../shared/types.js";
-import { DEFAULT_SETTINGS, Game, HEIGHT, WIDTH } from "./game.js";
+import { POWERS } from "../shared/types.js";
+import { DEFAULT_SETTINGS, Game, MAX_PLAYERS } from "./game.js";
 
 const COLORS = [
   "#f36a6e",
@@ -38,7 +39,6 @@ const COLORS = [
   "#dfe9ad",
   "#c0c0c0",
 ];
-const POWERS = ["none", "jump", "boost", "shield"];
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 interface Device {
   socket?: WebSocket;
@@ -58,6 +58,7 @@ interface Session {
   window: number;
   messages: number;
   alive: boolean;
+  inputSeq: number;
 }
 interface Options {
   distDir?: string;
@@ -98,7 +99,7 @@ function parsePlayers(value: unknown): LocalPlayer[] {
     )
       fail("Player names must have 1–24 characters.");
     const power = item.power ?? "none";
-    if (typeof power !== "string" || !POWERS.includes(power))
+    if (typeof power !== "string" || !POWERS.some((entry) => entry === power))
       fail("Choose a supported power.");
     return { id, name: item.name.trim(), power: power as LocalPlayer["power"] };
   });
@@ -135,7 +136,13 @@ export function createGameServer({
     server,
     path: "/ws",
     maxPayload: 8_192,
-    perMessageDeflate: false,
+    perMessageDeflate: {
+      threshold: 1024,
+      zlibDeflateOptions: { level: 1 },
+      concurrencyLimit: 4,
+      serverNoContextTakeover: true,
+      clientNoContextTakeover: true,
+    },
   });
   let previous = performance.now(),
     accumulator = 0;
@@ -153,8 +160,8 @@ export function createGameServer({
       phase: room.game.phase,
       round: room.game.round,
       matchTarget: room.game.matchTarget,
-      width: WIDTH,
-      height: HEIGHT,
+      width: room.game.width,
+      height: room.game.height,
       winnerId: room.game.winnerId,
       deathmatch: room.game.deathmatch,
     };
@@ -168,8 +175,8 @@ export function createGameServer({
     const others = room.game.players.filter(
       (player) => player.deviceId !== deviceId,
     );
-    if (others.length + players.length > 18)
-      fail("This room already has eighteen players.");
+    if (others.length + players.length > MAX_PLAYERS)
+      fail("A room can have up to fifty players.");
     if (
       players.some((player) => others.some((other) => other.id === player.id))
     )
@@ -184,7 +191,13 @@ export function createGameServer({
       const old = existing.get(player.id);
       let color = old?.color;
       if (!color || used.has(color))
-        color = COLORS.find((entry) => !used.has(entry))!;
+        color =
+          COLORS.find((entry) => !used.has(entry)) ??
+          Array.from(
+            { length: MAX_PLAYERS },
+            (_, index) =>
+              `hsl(${Math.round(index * 137.508) % 360} 85% ${index % 2 ? 68 : 55}%)`,
+          ).find((entry) => !used.has(entry))!;
       used.add(color);
       return {
         ...player,
@@ -210,7 +223,7 @@ export function createGameServer({
     const old = room.devices.get(deviceId);
     if (old && old.sessionToken !== sessionToken)
       fail("This device session belongs to another connection.");
-    if (!old && room.devices.size >= 40)
+    if (!old && room.devices.size >= 80)
       fail("This room has too many connected devices.");
     if (!old && !spectator && room.game.phase !== "lobby")
       fail(
@@ -218,8 +231,8 @@ export function createGameServer({
       );
     if (!old && !spectator) {
       const others = room.game.players;
-      if (others.length + players.length > 18)
-        fail("This room already has eighteen players.");
+      if (others.length + players.length > MAX_PLAYERS)
+        fail("A room can have up to fifty players.");
       if (
         players.some((player) => others.some((other) => other.id === player.id))
       )
@@ -247,6 +260,11 @@ export function createGameServer({
       tick: room.game.tick,
       heads: room.game.publicHeads(),
       segments: [...room.game.segments, ...room.game.pending],
+      holes: room.game.holes,
+      trailRevision: room.game.trailRevision,
+      effects: room.game.effects,
+      phase: room.game.phase,
+      inputAck: session.inputSeq,
     });
     broadcastRoom(room);
   }
@@ -325,6 +343,11 @@ export function createGameServer({
         broadcastRoom(room);
         break;
       case "input": {
+        if (
+          value.seq !== undefined &&
+          (!Number.isSafeInteger(value.seq) || (value.seq as number) < 1)
+        )
+          fail("Invalid input sequence.");
         if (!Array.isArray(value.inputs) || value.inputs.length > 6)
           fail("Invalid steering input.");
         const inputs = value.inputs.map((input) => {
@@ -339,6 +362,15 @@ export function createGameServer({
             fail("You can only steer players on your own device.");
           return { id, turn: input.turn as Turn, power: input.power === true };
         });
+        if (
+          value.seq !== undefined &&
+          (value.seq as number) <= session.inputSeq
+        )
+          break;
+        session.inputSeq =
+          value.seq === undefined
+            ? session.inputSeq + 1
+            : (value.seq as number);
         let changed = false;
         for (const input of inputs)
           changed =
@@ -376,6 +408,7 @@ export function createGameServer({
         requireHost(session);
         room.game.pause();
         broadcastRoom(room);
+        broadcastFrame(room);
         break;
       default:
         fail("Unknown message.");
@@ -387,7 +420,12 @@ export function createGameServer({
       socket.close(1013, "The server is full.");
       return;
     }
-    sessions.set(socket, { window: Date.now(), messages: 0, alive: true });
+    sessions.set(socket, {
+      window: Date.now(),
+      messages: 0,
+      alive: true,
+      inputSeq: 0,
+    });
     socket.on("pong", () => {
       sessions.get(socket)!.alive = true;
     });
@@ -435,32 +473,44 @@ export function createGameServer({
     });
   });
 
+  function broadcastFrame(room: Room) {
+    const message: ServerMessage = {
+      type: "frame",
+      tick: room.game.tick,
+      heads: room.game.publicHeads(),
+      segments: room.game.takeSegments(),
+      holes: room.game.takeHoles(),
+      trailRevision: room.game.trailRevision,
+      effects: room.game.effects,
+      phase: room.game.phase,
+      inputAck: 0,
+      countdown:
+        room.game.phase === "countdown"
+          ? Math.ceil(room.game.countdown / 60)
+          : undefined,
+    };
+    const { inputAck: _inputAck, ...shared } = message;
+    const encoded = JSON.stringify(shared).slice(0, -1);
+    for (const device of room.devices.values())
+      if (device.socket?.readyState === WebSocket.OPEN) {
+        if (device.socket.bufferedAmount > 1_048_576)
+          device.socket.close(
+            1013,
+            "Connection too slow. Reconnect to restore the arena.",
+          );
+        else
+          device.socket.send(
+            `${encoded},"inputAck":${sessions.get(device.socket)!.inputSeq}}`,
+          );
+      }
+  }
   function step() {
     for (const room of rooms.values()) {
       const phase = room.game.phase;
       const active = phase === "playing" || phase === "countdown";
       if (room.game.step()) broadcastRoom(room);
       if (active && (room.game.tick % 3 === 0 || room.game.phase !== phase)) {
-        const message: ServerMessage = {
-          type: "frame",
-          tick: room.game.tick,
-          heads: room.game.publicHeads(),
-          segments: room.game.takeSegments(),
-          countdown:
-            room.game.phase === "countdown"
-              ? Math.ceil(room.game.countdown / 60)
-              : undefined,
-        };
-        const encoded = JSON.stringify(message);
-        for (const device of room.devices.values())
-          if (device.socket?.readyState === WebSocket.OPEN) {
-            if (device.socket.bufferedAmount > 1_048_576)
-              device.socket.close(
-                1013,
-                "Connection too slow. Reconnect to restore the arena.",
-              );
-            else device.socket.send(encoded);
-          }
+        broadcastFrame(room);
       }
     }
   }
@@ -488,12 +538,13 @@ export function createGameServer({
             device.disconnectedAt !== undefined &&
             now - device.disconnectedAt > graceMs
           ) {
-            room.game.eliminate(device.playerIds);
+            const changed = room.game.eliminate(device.playerIds);
             room.game.players = room.game.players.filter(
               (player) => player.deviceId !== deviceId,
             );
             room.devices.delete(deviceId);
             broadcastRoom(room);
+            if (changed) broadcastFrame(room);
           }
         if (!room.devices.size) rooms.delete(room.code);
       }

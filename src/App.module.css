@@ -1,146 +1,752 @@
-:global(*) { box-sizing: border-box; }
-:global(body) { margin: 0; min-width: 320px; color: #ddd; background: #222; font-family: Arial, sans-serif; }
-:global(button), :global(input), :global(select) { font: inherit; }
-:global(button) { cursor: pointer; }
-:global(button:disabled) { opacity: .45; cursor: default; }
-:global(button:focus-visible), :global(input:focus-visible), :global(select:focus-visible), :global(a:focus-visible) { outline: 2px solid #ccc; outline-offset: 2px; }
-:global(a) { color: #ccc; }
+:global(*) {
+  box-sizing: border-box;
+}
+:global(body) {
+  margin: 0;
+  min-width: 320px;
+  color: #ddd;
+  background: #222;
+  font-family: Arial, sans-serif;
+}
+:global(button),
+:global(input),
+:global(select) {
+  font: inherit;
+}
+:global(button) {
+  cursor: pointer;
+}
+:global(button:disabled) {
+  opacity: 0.45;
+  cursor: default;
+}
+:global(button:focus-visible),
+:global(input:focus-visible),
+:global(select:focus-visible),
+:global(a:focus-visible) {
+  outline: 2px solid #ccc;
+  outline-offset: 2px;
+}
+:global(a) {
+  color: #ccc;
+}
 
-.app { width: min(760px, calc(100% - 30px)); margin: 66px auto 30px; }
-.gameApp { width: min(1440px, calc(100% - 30px)); margin-top: 16px; }
-.header { display: flex; align-items: center; justify-content: flex-end; gap: 14px; min-height: 28px; margin-bottom: 10px; }
-.headerActions { display: flex; align-items: center; gap: 14px; }
-.connection { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #aaa; }
-.statusDot, .memberDot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #aaa; flex-shrink: 0; }
-.iconButton, .textButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; background: transparent; color: #bbb; padding: 5px 0; font-size: 12px; }
-.iconButton:hover, .textButton:hover { color: #fff; }
-.iconButton svg, .textButton svg { width: 17px; height: 17px; }
-.main { width: 100%; }
-.layout { display: grid; grid-template-columns: 1fr; gap: 19px; }
-.playersPanel { background: #333; }
-.panelHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; background: #444; }
-.panelTitle { margin: 0; font-size: 17px; font-weight: normal; }
-.badge, .sectionLabel, .localMarker, .meBadge { font-size: 12px; color: #aaa; font-weight: normal; }
-.table { display: table; table-layout: fixed; width: 100%; border-collapse: collapse; }
-.tableHeader, .playerRow { display: table-row; }
-.tableHeader { background: #444; color: #ccc; font-size: 12px; }
-.tableHeader > th { height: 33px; padding: 8px 12px; text-align: left; font-size: 12px; font-weight: normal; color: #ccc; }
-.tableHeader > :first-child { min-width: 160px; }
-.tableHeader > :nth-child(2), .tableHeader > :nth-child(3), .tableHeader > :nth-child(4) { width: 64px; padding: 8px 0; text-align: center; }
-.tableHeader > :last-child { width: 180px; }
-.playerRow { border-bottom: 1px solid #292929; color: #999; }
-.playerRow:hover { background: #333; }
-.playerRow > td { height: 61px; padding: 0; vertical-align: middle; }
-.playerRow > td:last-child { padding: 0 10px; }
-.activeRow { color: var(--player-color); }
-.playerIdentity { display: flex; align-items: center; gap: 8px; padding-left: 12px; min-width: 0; }
-.playerToggle { display: inline-grid; place-items: center; flex-shrink: 0; width: 24px; height: 28px; border: 0; background: transparent; color: inherit; padding: 0; }
-.colorDot { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #999; color: #333; font-size: 12px; }
-.activeRow .colorDot { background: var(--player-color); color: #333; }
-.customNameInput { width: 100%; min-width: 0; padding: 4px 0; border: 0; background: transparent; color: inherit; font-size: 28px; }
-.customNameInput:focus { background: #3b3b3b; }
-.keyButton { width: 100%; min-height: 59px; border: 0; border-right: 1px solid #292929; background: transparent; color: inherit; font-size: 24px; padding: 5px 3px; }
-.keyButton:hover { background: #3d3d3d; }
-.power { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 40px; margin: 0; border: 1px solid #555; border-radius: 2px; color: #ccc; background: #333; font-size: 16px; padding: 4px 7px; }
-.tableFooter { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 12px; color: #aaa; font-size: 11px; }
-.keyboardHint { display: inline-flex; align-items: center; gap: 6px; color: #aaa; font-size: 11px; }
-.keyboardHint svg { width: 14px; height: 14px; }
-.muted { color: #999; font-size: 12px; }
-.roomPanel { background: transparent; }
-.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
-.tab, .button { border: 1px solid #666; border-radius: 3px; background: #3a3a3a; color: #ddd; font-size: 14px; padding: 8px 14px; }
-.tab:hover, .button:hover:enabled { background: #555; }
-.selectedTab, .primaryButton { background: #555; border-color: #777; }
-.secondaryButton { background: #333; }
-.button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; text-decoration: none; }
-.button svg { width: 15px; height: 15px; }
-.roomBody { padding: 0; }
-.roomHeading { font-size: 18px; font-weight: normal; margin: 0 0 10px; }
-.roomCopy { color: #aaa; font-size: 13px; line-height: 1.5; margin: 9px 0; }
-.settings { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; margin: 12px 0 17px; }
-.settingRow { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.select, .input { color: #ddd; background: #333; border: 1px solid #666; border-radius: 2px; padding: 6px 8px; font-size: 13px; }
-.input { width: 100%; min-width: 0; }
-.select { height: 31px; }
-.switchButton { width: 29px; height: 17px; border: 1px solid #777; border-radius: 10px; background: #333; padding: 0; position: relative; }
-.switchButton::after { content: ''; width: 9px; height: 9px; position: absolute; top: 3px; left: 3px; border-radius: 50%; background: #aaa; }
-.switchOn { background: #777; }
-.switchOn::after { left: 15px; background: #eee; }
-.codeBar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 9px 0 15px; }
-.roomCode { display: inline-block; font-size: 24px; letter-spacing: .13em; color: #eee; font-family: Consolas, monospace; user-select: all; }
-.roomCodeInput { max-width: 140px; height: 38px; font-size: 19px; letter-spacing: .12em; text-transform: uppercase; }
-.joinFields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.roomMembers { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 12px 0; }
-.member { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-.roomActions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
-.playersPanel > .roomActions { padding: 0 12px 12px; }
-.tip, .serverNote { color: #999; font-size: 11px; line-height: 1.6; }
-.serverNote { margin-top: 18px; }
-.serverNote svg { width: 14px; height: 14px; margin-right: 6px; vertical-align: middle; }
-.serverNote .textButton { margin-left: 10px; }
-.error { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 14px 0; padding: 10px 12px; background: #442828; color: #ecc; font-size: 13px; }
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #444; border: 1px solid #777; color: #eee; padding: 10px 14px; font-size: 13px; z-index: 20; }
-.gameLayout { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 16px; align-items: start; }
-.arenaPanel { background: #171717; }
-.arenaHeader { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 38px; padding: 4px 10px; background: #333; }
-.arenaTitle { display: flex; align-items: center; gap: 7px; font-size: 12px; }
-.canvasWrap { position: relative; background: #111414; }
-.canvas { width: 100%; height: auto; display: block; }
-.arenaOverlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 18px; text-align: center; background: #111111b3; }
-.countdown { color: #eee; font-size: 64px; line-height: 1; }
-.overlayTitle { margin: 0; font-size: 24px; font-weight: normal; }
-.overlayCopy { margin: 0; color: #bbb; font-size: 13px; line-height: 1.5; }
-.scoreboard { background: #333; }
-.scoreboard .panelHeader { padding: 10px; }
-.scoreboard .panelTitle { font-size: 15px; }
-.scoreboard .badge { font-size: 10px; }
-.scoreRow { display: flex; align-items: center; gap: 6px; padding: 9px 10px; border-bottom: 1px solid #292929; }
-.playerNumber { font-size: 11px; color: #aaa; }
-.scoreName { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; font-size: 13px; }
-.scoreName strong { font-weight: normal; overflow: hidden; text-overflow: ellipsis; }
-.scoreName small { font-size: 10px; color: #aaa; }
-.scoreValue { font-size: 17px; }
-.scoreboard .roomBody { padding: 10px; }
-.scoreboard .roomCode { font-size: 20px; }
-.scoreboard .sectionLabel { margin: 0 0 6px; }
-.controlsBar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: #333; }
-.touchControls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
-.touchPlayer { display: flex; align-items: center; gap: 7px; color: var(--player-color); background: #333; padding: 7px; font-size: 13px; }
-.touchButton { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 45px; height: 43px; border: 1px solid #777; border-radius: 2px; background: #444; color: inherit; font-size: 20px; touch-action: none; user-select: none; }
-.touchButton:active { background: #666; }
-.touchButton kbd { font-size: 9px; font-family: inherit; }
-.projector { width: min(1200px, calc(100% - 24px)); margin-top: 10px; }
-.projector .gameLayout { display: block; }
-.projector .arenaPanel { width: min(100%, calc((100dvh - 105px) * 1.5)); margin: 0 auto; }
+.app {
+  width: min(760px, calc(100% - 30px));
+  margin: 66px auto 30px;
+}
+.gameApp {
+  width: min(1440px, calc(100% - 30px));
+  margin-top: 16px;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-height: 28px;
+  margin-bottom: 10px;
+}
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #aaa;
+}
+.statusDot,
+.memberDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #aaa;
+  flex-shrink: 0;
+}
+.iconButton,
+.textButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: #bbb;
+  padding: 5px 0;
+  font-size: 12px;
+}
+.iconButton:hover,
+.textButton:hover {
+  color: #fff;
+}
+.iconButton svg,
+.textButton svg {
+  width: 17px;
+  height: 17px;
+}
+.main {
+  width: 100%;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 19px;
+}
+.playersPanel {
+  background: #333;
+}
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  background: #444;
+}
+.panelTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: normal;
+}
+.badge,
+.sectionLabel,
+.localMarker,
+.meBadge {
+  font-size: 12px;
+  color: #aaa;
+  font-weight: normal;
+}
+.table {
+  display: table;
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
+.tableHeader,
+.playerRow {
+  display: table-row;
+}
+.tableHeader {
+  background: #444;
+  color: #ccc;
+  font-size: 12px;
+}
+.tableHeader > th {
+  height: 33px;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: normal;
+  color: #ccc;
+}
+.tableHeader > :first-child {
+  min-width: 160px;
+}
+.tableHeader > :nth-child(2),
+.tableHeader > :nth-child(3),
+.tableHeader > :nth-child(4) {
+  width: 64px;
+  padding: 8px 0;
+  text-align: center;
+}
+.tableHeader > :last-child {
+  width: 180px;
+}
+.playerRow {
+  border-bottom: 1px solid #292929;
+  color: #999;
+}
+.playerRow:hover {
+  background: #333;
+}
+.playerRow > td {
+  height: 61px;
+  padding: 0;
+  vertical-align: middle;
+}
+.playerRow > td:last-child {
+  padding: 0 10px;
+}
+.activeRow {
+  color: var(--player-color);
+}
+.playerIdentity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  min-width: 0;
+}
+.playerToggle {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+.colorDot {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #999;
+  color: #333;
+  font-size: 12px;
+}
+.activeRow .colorDot {
+  background: var(--player-color);
+  color: #333;
+}
+.customNameInput {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 28px;
+}
+.customNameInput:focus {
+  background: #3b3b3b;
+}
+.keyButton {
+  width: 100%;
+  min-height: 59px;
+  border: 0;
+  border-right: 1px solid #292929;
+  background: transparent;
+  color: inherit;
+  font-size: 24px;
+  padding: 5px 3px;
+}
+.keyButton:hover {
+  background: #3d3d3d;
+}
+.power {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 40px;
+  margin: 0;
+  border: 1px solid #555;
+  border-radius: 2px;
+  color: #ccc;
+  background: #333;
+  font-size: 16px;
+  padding: 4px 7px;
+}
+.tableFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  color: #aaa;
+  font-size: 11px;
+}
+.keyboardHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #aaa;
+  font-size: 11px;
+}
+.keyboardHint svg {
+  width: 14px;
+  height: 14px;
+}
+.muted {
+  color: #999;
+  font-size: 12px;
+}
+.roomPanel {
+  background: transparent;
+}
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.tab,
+.button {
+  border: 1px solid #666;
+  border-radius: 3px;
+  background: #3a3a3a;
+  color: #ddd;
+  font-size: 14px;
+  padding: 8px 14px;
+}
+.tab:hover,
+.button:hover:enabled {
+  background: #555;
+}
+.selectedTab,
+.primaryButton {
+  background: #555;
+  border-color: #777;
+}
+.secondaryButton {
+  background: #333;
+}
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  text-decoration: none;
+}
+.button svg {
+  width: 15px;
+  height: 15px;
+}
+.roomBody {
+  padding: 0;
+}
+.roomHeading {
+  font-size: 18px;
+  font-weight: normal;
+  margin: 0 0 10px;
+}
+.roomCopy {
+  color: #aaa;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 9px 0;
+}
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 22px;
+  margin: 12px 0 17px;
+}
+.settingRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.select,
+.input {
+  color: #ddd;
+  background: #333;
+  border: 1px solid #666;
+  border-radius: 2px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.input {
+  width: 100%;
+  min-width: 0;
+}
+.select {
+  height: 31px;
+}
+.switchButton {
+  width: 29px;
+  height: 17px;
+  border: 1px solid #777;
+  border-radius: 10px;
+  background: #333;
+  padding: 0;
+  position: relative;
+}
+.switchButton::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  border-radius: 50%;
+  background: #aaa;
+}
+.switchOn {
+  background: #777;
+}
+.switchOn::after {
+  left: 15px;
+  background: #eee;
+}
+.codeBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 9px 0 15px;
+}
+.roomCode {
+  display: inline-block;
+  font-size: 24px;
+  letter-spacing: 0.13em;
+  color: #eee;
+  font-family: Consolas, monospace;
+  user-select: all;
+}
+.roomCodeInput {
+  max-width: 140px;
+  height: 38px;
+  font-size: 19px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.joinFields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.roomMembers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin: 12px 0;
+}
+.member {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.roomActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.playersPanel > .roomActions {
+  padding: 0 12px 12px;
+}
+.tip,
+.serverNote {
+  color: #999;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.serverNote {
+  margin-top: 18px;
+}
+.serverNote svg {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.serverNote .textButton {
+  margin-left: 10px;
+}
+.error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 10px 12px;
+  background: #442828;
+  color: #ecc;
+  font-size: 13px;
+}
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #444;
+  border: 1px solid #777;
+  color: #eee;
+  padding: 10px 14px;
+  font-size: 13px;
+  z-index: 20;
+}
+.gameLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 16px;
+  align-items: start;
+}
+.arenaPanel {
+  background: #171717;
+}
+.arenaHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 4px 10px;
+  background: #333;
+}
+.arenaTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.canvasWrap {
+  position: relative;
+  background: #111414;
+}
+.canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.arenaOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px;
+  text-align: center;
+  background: #111111b3;
+}
+.countdown {
+  color: #eee;
+  font-size: 64px;
+  line-height: 1;
+}
+.overlayTitle {
+  margin: 0;
+  font-size: 24px;
+  font-weight: normal;
+}
+.overlayCopy {
+  margin: 0;
+  color: #bbb;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.scoreboard {
+  background: #333;
+  max-height: calc(100dvh - 110px);
+  overflow-y: auto;
+}
+.scoreboard .panelHeader {
+  padding: 10px;
+}
+.scoreboard .panelTitle {
+  font-size: 15px;
+}
+.scoreboard .badge {
+  font-size: 10px;
+}
+.scoreRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border-bottom: 1px solid #292929;
+}
+.playerNumber {
+  font-size: 11px;
+  color: #aaa;
+}
+.scoreName {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+  font-size: 13px;
+}
+.scoreName strong {
+  font-weight: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scoreName small {
+  font-size: 10px;
+  color: #aaa;
+}
+.scoreValue {
+  font-size: 17px;
+}
+.scoreboard .roomBody {
+  padding: 10px;
+}
+.scoreboard .roomCode {
+  font-size: 20px;
+}
+.scoreboard .sectionLabel {
+  margin: 0 0 6px;
+}
+.controlsBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #333;
+}
+.touchControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+.touchPlayer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--player-color);
+  background: #333;
+  padding: 7px;
+  font-size: 13px;
+}
+.touchButton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 45px;
+  height: 43px;
+  border: 1px solid #777;
+  border-radius: 2px;
+  background: #444;
+  color: inherit;
+  font-size: 20px;
+  touch-action: none;
+  user-select: none;
+}
+.touchButton:active {
+  background: #666;
+}
+.touchButton kbd {
+  font-size: 9px;
+  font-family: inherit;
+}
+.projector {
+  width: min(1200px, calc(100% - 24px));
+  margin-top: 10px;
+}
+.projector .gameLayout {
+  display: block;
+}
+.projector .arenaPanel {
+  width: min(100%, calc((100dvh - 105px) * 1.5));
+  margin: 0 auto;
+}
 
-@media (min-width: 1100px) { .app:has(.gameLayout) { width: min(1200px, calc(100% - 40px)); margin-top: 20px; } }
+@media (min-width: 1100px) {
+  .app:has(.gameLayout) {
+    width: min(1200px, calc(100% - 40px));
+    margin-top: 20px;
+  }
+  .app.projector {
+    width: calc(100% - 24px);
+    margin-top: 10px;
+  }
+}
 @media (max-width: 650px) {
-  .app { margin-top: 20px; width: calc(100% - 20px); }
-  .tableHeader > :first-child { min-width: 115px; }
-  .tableHeader > :nth-child(2), .tableHeader > :nth-child(3), .tableHeader > :nth-child(4) { width: 45px; }
-  .tableHeader > :last-child { width: 115px; }
-  .customNameInput { font-size: 24px; }
-  .playerIdentity { padding-left: 7px; gap: 5px; }
-  .keyButton { font-size: 20px; }
-  .power { font-size: 12px; padding: 4px; }
-  .playerRow > td:last-child { padding: 0 6px; }
-  .tableHeader > th { padding-left: 7px; padding-right: 7px; }
-  .settings { gap: 10px 15px; }
-  .tableFooter { flex-wrap: wrap; }
-  .gameLayout { display: flex; flex-direction: column; }
-  .arenaPanel, .scoreboard { width: 100%; }
-  .scoreboard > div:nth-child(2) { display: flex; flex-wrap: wrap; }
-  .scoreRow { flex: 1 1 50%; }
-  .projector .arenaPanel { width: 100%; }
+  .app {
+    margin-top: 20px;
+    width: calc(100% - 20px);
+  }
+  .tableHeader > :first-child {
+    min-width: 115px;
+  }
+  .tableHeader > :nth-child(2),
+  .tableHeader > :nth-child(3),
+  .tableHeader > :nth-child(4) {
+    width: 45px;
+  }
+  .tableHeader > :last-child {
+    width: 115px;
+  }
+  .customNameInput {
+    font-size: 24px;
+  }
+  .playerIdentity {
+    padding-left: 7px;
+    gap: 5px;
+  }
+  .keyButton {
+    font-size: 20px;
+  }
+  .power {
+    font-size: 12px;
+    padding: 4px;
+  }
+  .playerRow > td:last-child {
+    padding: 0 6px;
+  }
+  .tableHeader > th {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+  .settings {
+    gap: 10px 15px;
+  }
+  .tableFooter {
+    flex-wrap: wrap;
+  }
+  .gameLayout {
+    display: flex;
+    flex-direction: column;
+  }
+  .arenaPanel,
+  .scoreboard {
+    width: 100%;
+  }
+  .scoreboard > div:nth-child(2) {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .scoreRow {
+    flex: 1 1 50%;
+  }
+  .projector .arenaPanel {
+    width: 100%;
+  }
 }
 @media (max-width: 420px) {
-  .tableHeader > :first-child { min-width: 89px; }
-  .tableHeader > :nth-child(2), .tableHeader > :nth-child(3), .tableHeader > :nth-child(4) { width: 35px; }
-  .tableHeader > :last-child { width: 94px; }
-  .tableHeader > th { font-size: 10px; }
-  .customNameInput { font-size: 21px; }
-  .playerToggle { width: 17px; }
-  .colorDot { width: 15px; height: 15px; font-size: 10px; }
-  .keyButton { font-size: 18px; }
-  .power { font-size: 11px; }
+  .tableHeader > :first-child {
+    min-width: 89px;
+  }
+  .tableHeader > :nth-child(2),
+  .tableHeader > :nth-child(3),
+  .tableHeader > :nth-child(4) {
+    width: 35px;
+  }
+  .tableHeader > :last-child {
+    width: 94px;
+  }
+  .tableHeader > th {
+    font-size: 10px;
+  }
+  .customNameInput {
+    font-size: 21px;
+  }
+  .playerToggle {
+    width: 17px;
+  }
+  .colorDot {
+    width: 15px;
+    height: 15px;
+    font-size: 10px;
+  }
+  .keyButton {
+    font-size: 18px;
+  }
+  .power {
+    font-size: 11px;
+  }
 }

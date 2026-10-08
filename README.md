@@ -15,7 +15,7 @@ Open **http://localhost:5173** on the host computer. The terminal prints the LAN
 
 1. Select up to six players on each device. Click their color, edit their name, and click a key to rebind it.
 2. The host clicks **Create room** and shares the five-character code or invite link.
-3. Other devices open the host's address, choose **Join a room**, and enter the code. The room supports 18 players total.
+3. Other devices open the host's address, choose **Join a room**, and enter the code. The room supports 50 players total.
 4. The host clicks **Start game** or presses Space. Space pauses/resumes a running round and starts the next round after it ends.
 5. A projector browser can **Spectate** without using a player slot, then select **Projector view** and fullscreen.
 
@@ -40,7 +40,9 @@ No paid service or external account is required for LAN play. A public deploymen
 
 - The server simulates movement, collisions, gaps, powers, elimination, and scoring at **60 ticks per second**. Clients cannot submit positions or scores.
 - Browsers send steering changes immediately and repeat held inputs every 200 ms so a disconnected or hidden page cannot leave a turn stuck.
-- The server broadcasts heads and newly drawn trail segments at **20 updates per second**. Trails are accumulated on a canvas; old trails are not repeatedly downloaded or redrawn.
+- The server broadcasts heads and newly drawn trail segments at **20 updates per second**. The browser predicts local steering immediately, replays unacknowledged inputs, and corrects against authoritative updates. Remote heads move continuously between updates with a bounded prediction window. Only the server decides deaths and scores.
+- Trails are accumulated once on a backing canvas sized for the display. New segments and Shoot holes erasures are processed in tick order; old trails are not repeatedly downloaded.
+- WebSocket frames negotiate fast level-1 compression for supported browsers; messages under 1 KB skip compression. A representative 50-player local benchmark reduced a 16.4 KB frame to about 2.5 KB (roughly 85% less traffic). Actual traffic depends on active heads and powers.
 - Every device gets at most six owned players. Inputs are checked against that device's roster; messages are validated and bounded.
 - Reconnecting players retain their seat briefly. A disconnected host passes control to another connected device. A late spectator receives a full arena snapshot.
 - Rooms stay in memory. Restarting the Node server clears games. This single process is intended for classroom sessions; use room routing and a shared session directory before scaling across server instances.
@@ -49,7 +51,9 @@ No paid service or external account is required for LAN play. A public deploymen
 
 Move continuously, steer left or right, and avoid walls and every solid trail, including your own. Occasional gaps can be crossed. Each elimination awards one point to surviving players. Classic target score is `(number of players − 1) × 10`; fixed targets are also available.
 
-Tied match leaders play a final deathmatch. This first version implements **Jump**, **Speed boost**, and **Invisible** abilities, including charges gained by crossing another player’s trail gap. The reference has additional powers and music that are not included. UI elements and game code are written independently so you can modify this project.
+Tied match leaders play a final deathmatch. All original power choices are available: Run faster, Run slower, Jump, Invisible, Vertical bar, Cross walls, Dark knight, Hydra, Reverse, Square head, Chuck Norris, No superpower, Shoot holes, and Random. Powers and charge counts are authoritative and shared across all devices, including spectators. Dark knight blacks out the arena on every device for three seconds. Hydra is capped at 16 alive heads per player and 256 alive heads per room to bound network and simulation work. Attempts beyond the cap do not consume a charge. Music is not included. UI elements and game code are written independently so you can modify this project.
+
+The arena retains the classic 1200 × 800 size for up to six players. Above six, its area grows in proportion to player count. Arena dimensions stay fixed during a match, and each device fits the entire arena to its screen.
 
 ## Development
 
@@ -63,9 +67,10 @@ Main files:
 - `src/App.tsx`: setup, rooms, keyboard/touch controls, scoreboard.
 - `src/App.module.css`: appearance and responsive layout.
 - `src/GameCanvas.tsx`: frame rendering and persistent trails.
+- `src/prediction.ts`: immediate local input prediction and server reconciliation.
 - `shared/types.ts`: client/server protocol.
 - `server/game.ts`: authoritative game simulation.
 - `server/app.ts`: room lifecycle and WebSocket handling.
 - `server/index.ts`: server entry point.
 
-Tests include three devices with six players each, room limits, input ownership, reconnect behavior, host controls, and simulation checks. Browser checks should also be performed after UI changes.
+Tests cover multiplayer powers, 50-player room limits and arena scaling, input ownership, reconnect behavior, host controls, and prediction under simulated network delay. Browser checks should also be performed after UI changes.
