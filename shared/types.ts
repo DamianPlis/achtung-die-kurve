@@ -114,6 +114,7 @@ export interface WorldFrame {
   phase: Phase;
   inputAck: number;
   countdown?: number;
+  trailColors?: Record<string, string>;
 }
 export type ClientMessage =
   | {
@@ -142,8 +143,8 @@ export type ClientMessage =
   | { type: "powerRules"; rules: PowerRules }
   | { type: "ping"; at: number };
 export type ServerMessage =
-  | { type: "room"; room: RoomView; deviceId: string }
+  | { type: "room"; room: RoomView; deviceId: string; requestType?: "players" | "powerRules" }
   | ({ type: "snapshot"; room: RoomView; deviceId: string } & WorldFrame)
   | ({ type: "frame" } & WorldFrame)
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; requestType?: string; room?: RoomView }
   | { type: "pong"; at: number };

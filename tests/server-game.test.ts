@@ -545,3 +545,186 @@ test("players reaching the target together enter a deathmatch excluding other pl
   assert.equal(game.phase, "finished");
   assert.equal(game.winnerId, "player-1");
 });
+
+test("Hydra splits survive past immunity at every game speed", () => {
+  for (const speed of ["slow", "normal", "fast"] as const) {
+    const game = running(3);
+    game.settings.speed = speed;
+    game.players[0].power = "hydra";
+    game.step();
+    assert.equal(game.input("player-0", 0, true), true);
+    const split = game.heads.filter((head) => head.ownerId === "player-0");
+    const until = split[0].immuneUntil;
+    for (let i = 0; i < 30; i++) game.step();
+    assert.ok(game.tick > until);
+    assert.ok(split.every((head) => head.alive), speed);
+    assert.deepEqual(game.players.map((player) => player.score), [0, 0, 0]);
+  }
+});
+
+test("boosted head collisions include paths between ticks, preserving near misses and invisible heads", () => {
+  const travel = (115 * 2) / 60;
+  for (const [offset, separation, invisible] of [
+    [travel, 3.5, false],
+    [travel, 4.1, false],
+    [travel, 3.5, true],
+    [0.9, 3.99, false],
+  ] as const) {
+    const game = running(3);
+    game.settings.speed = "fast";
+    game.players[0].power = "boost";
+    game.players[1].power = invisible ? "shield" : "boost";
+    Object.assign(game.heads[0], { x: 401, y: 400, angle: 0 });
+    Object.assign(game.heads[1], { x: 401 + offset, y: 400 + separation, angle: Math.PI });
+    game.input("player-0", 0, true);
+    game.input("player-1", 0, true);
+    game.step();
+    const survives = separation > 4 || invisible;
+    assert.equal(game.heads[0].alive, survives);
+    assert.equal(game.heads[1].alive, survives);
+    assert.equal(game.players[2].score, survives ? 0 : 2);
+  }
+});
+
+test("jump, reverse and wall wrapping skip teleport paths but collide at landings", () => {
+  for (const power of ["jump", "reverse", "wrap"] as const) {
+    for (const blocked of [false, true]) {
+      const game = running(3);
+      game.players[0].power = power;
+      Object.assign(game.heads[0], { x: 300, y: 400, angle: 0 });
+      const destination = power === "jump" ? 333.6 : power === "reverse" ? 330 : 3.4;
+      Object.assign(game.heads[1], { x: blocked ? destination : 315, y: 400, angle: 0 });
+      if (power === "reverse") game.heads[0].reversePose = { x: 330, y: 400, angle: 0 };
+      if (power === "wrap") {
+        game.heads[0].x = game.width - 2;
+        if (!blocked) game.heads[1].x = game.width / 2;
+      } else game.input("player-0", 0, true);
+      game.step();
+      assert.equal(game.heads[0].alive, !blocked, power);
+      assert.equal(game.heads[1].alive, !blocked, power);
+      assert.equal(game.heads[2].alive, true);
+      const segments = game.takeSegments().filter((segment) => segment.id === "player-0");
+      assert.ok(segments.every((segment) => Math.abs(segment.x2 - segment.x1) < 5));
+    }
+  }
+});
+
+test("Hydra trails merge per head and snapshots include pending trails without draining them", () => {
+  const game = running(3);
+  game.players[0].power = "hydra";
+  game.input("player-0", 0, true);
+  for (let i = 0; i < 3; i++) game.step();
+  const pendingLength = game.pending.length;
+  const snapshot = game.snapshotSegments();
+  assert.equal(snapshot.length, pendingLength);
+  assert.equal(game.pending.length, pendingLength);
+  assert.ok(snapshot.every((segment) => !("headId" in segment)));
+  const segments = game.takeSegments();
+  assert.equal(segments.filter((segment) => segment.id === "player-0").length, 2);
+  assert.equal(segments.length, 4);
+  assert.ok(segments.every((segment) => !("headId" in segment)));
+  game.step();
+  assert.equal(game.snapshotSegments().length, game.segments.length + game.pending.length);
+});
+
+test("a deathmatch finishes without a champion when every finalist disconnects", () => {
+  const game = running(3, 2);
+  game.players[0].score = 1;
+  game.players[1].score = 1;
+  game.eliminate(["player-2"]);
+  game.eliminate(["player-1"]);
+  assert.deepEqual(game.deathmatch, ["player-0", "player-1"]);
+  game.players[0].connected = false;
+  game.players[1].connected = false;
+  game.startRound();
+  assert.equal(game.phase, "finished");
+  assert.equal(game.winnerId, undefined);
+  game.lobby();
+  assert.equal(game.phase, "lobby");
+  assert.equal(game.deathmatch, undefined);
+});
+
+test("Hydra prunes dead siblings while preserving their trails, immunity and final death marker", () => {
+  const game = running(3);
+  game.players[0].power = "hydra";
+  game.step();
+  const trails = game.takeSegments();
+  const original = game.heads[0];
+  game.input("player-0", 0, true);
+  const sibling = game.heads.find((head) => head.id !== original.id && head.ownerId === original.ownerId)!;
+  Object.assign(original, { x: game.width - 1, angle: 0 });
+  game.step();
+  assert.equal(original.alive, false);
+  assert.equal(sibling.alive, true, "the old sibling's trail remains immune during splitting");
+  assert.equal(game.heads.includes(original), false);
+  assert.equal(game.heads.includes(sibling), true);
+  assert.deepEqual(game.players.map((player) => player.score), [0, 0, 0]);
+  assert.ok(trails.some((segment) => segment.id === original.ownerId));
+  assert.ok(game.segments.some((segment) => segment.id === original.ownerId));
+  game.eliminate([original.ownerId]);
+  assert.equal(game.heads.filter((head) => head.ownerId === original.ownerId).length, 1);
+  assert.equal(game.heads.find((head) => head.ownerId === original.ownerId), sibling);
+  assert.equal(sibling.alive, false);
+  assert.deepEqual(game.players.map((player) => player.score), [0, 1, 1]);
+});
+
+test("50 Hydra players with earned charges keep dead markers and published heads bounded", () => {
+  const roster = players(50);
+  roster.forEach((player) => { player.power = "hydra"; });
+  const game = new Game(roster, { ...DEFAULT_SETTINGS, speed: "slow", gaps: false }, () => 0.5);
+  game.start();
+  for (let round = 0; round < 2; round++) {
+    game.beginCountdown();
+    for (let tick = 0; tick < 180; tick++) game.step();
+    game.heads.forEach((head, i) => Object.assign(head, {
+      x: i < 49 ? game.width - 2 : 200, y: 100 + i * 40, angle: 0,
+    }));
+    game.step();
+    assert.equal(game.phase, "roundEnd");
+    game.startRound();
+  }
+  assert.ok(game.players.slice(0, 49).every((player) => player.charges === 6));
+  game.beginCountdown();
+  for (let tick = 0; tick < 180; tick++) game.step();
+  game.heads.forEach((head, i) => Object.assign(head, { x: 200, y: 100 + i * 40, angle: 0 }));
+  let activations = 0;
+  for (let tick = 0; tick < 600; tick++) {
+    if (tick % 3 === 0) {
+      for (const player of game.players) {
+        game.input(player.id, 0, false);
+        activations += Number(game.input(player.id, 0, true));
+      }
+    }
+    game.step();
+    if (tick % 3 === 0) game.takeSegments();
+    assert.equal(game.phase, "playing");
+    assert.ok(game.heads.length <= MAX_ALIVE_HEADS + 50);
+    assert.equal(game.publicHeads().length, game.heads.length);
+  }
+  assert.ok(activations > 250);
+  for (const player of game.players) {
+    const owned = game.heads.filter((head) => head.ownerId === player.id);
+    const alive = owned.filter((head) => head.alive);
+    assert.equal(owned.length, alive.length || 1);
+  }
+});
+
+test("round trail colors retain departed owners and Chuck white until trails reset", () => {
+  const roster = players(3);
+  roster[0].id = "__proto__";
+  roster[0].color = "#f00";
+  roster[1].power = "chuck";
+  roster[1].color = "#0f0";
+  const game = new Game(roster, { ...DEFAULT_SETTINGS }, () => 0.5);
+  game.start();
+  assert.equal(game.trailColors["__proto__"], "#f00");
+  assert.equal(game.trailColors["player-1"], "#fff");
+  game.eliminate(["__proto__"]);
+  game.players = game.players.filter((player) => player.id !== "__proto__");
+  assert.equal(game.trailColors["__proto__"], "#f00");
+  game.lobby();
+  assert.equal(Object.keys(game.trailColors).length, 0);
+  game.start();
+  assert.equal(game.trailColors["__proto__"], undefined);
+  assert.equal(game.trailColors["player-1"], "#fff");
+});

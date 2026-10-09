@@ -63,10 +63,11 @@ export class Game {
   deathmatch?: string[];
   matchTarget = 0;
   trailRevision = 0;
+  trailColors: Record<string, string> = Object.create(null);
   effects: WorldEffects = { darkUntil: 0 };
   heads: Runner[] = [];
   segments: Segment[] = [];
-  pending: Segment[] = [];
+  pending: (Segment & { headId: string })[] = [];
   holes: Hole[] = [];
   pendingHoles: Hole[] = [];
   private cols = WIDTH / GRID;
@@ -117,9 +118,9 @@ export class Game {
         player.connected &&
         (!this.deathmatch || this.deathmatch.includes(player.id)),
     );
-    if (this.deathmatch && eligible.length === 1) {
+    if (this.deathmatch && eligible.length <= 1) {
       this.phase = "finished";
-      this.winnerId = eligible[0].id;
+      this.winnerId = eligible[0]?.id;
       return;
     }
     if (eligible.length < 2)
@@ -142,6 +143,8 @@ export class Game {
         player.power === "random"
           ? POWERS[Math.floor(this.random() * (POWERS.length - 1))]
           : player.power;
+      this.trailColors[player.id] =
+        player.roundPower === "chuck" ? "#fff" : player.color;
       this.controls.set(player.id, {
         turn: 0,
         powerDown: false,
@@ -197,6 +200,7 @@ export class Game {
 
   private clearTrails() {
     this.trailRevision++;
+    this.trailColors = Object.create(null);
     this.segments = [];
     this.pending = [];
     this.holes = [];
@@ -296,7 +300,7 @@ export class Game {
           tick: this.tick,
           order: ++this.drawOrder,
         };
-        this.pending.push(segment);
+        this.pending.push({ ...segment, headId: head.id });
         this.rasterLine(
           head,
           segment.x1,
@@ -307,8 +311,13 @@ export class Game {
         );
       } else if (ability === "hydra") {
         const before = head.angle;
-        head.angle -= Math.PI / 20;
-        head.immuneUntil = this.tick + 10;
+        const spread = Math.PI / 20;
+        head.angle -= spread;
+        // Keep siblings immune until their trails separate, including at slow speed.
+        head.immuneUntil =
+          this.tick +
+          Math.ceil(((4 + GRID) * 60) / (2 * head.speed * Math.sin(spread))) +
+          1;
         head.revision++;
         const index = ++this.headIndex;
         this.headOwners.set(index, id);
@@ -316,7 +325,7 @@ export class Game {
           ...head,
           id: `${id}:hydra:${index}`,
           index,
-          angle: before + Math.PI / 20,
+          angle: before + spread,
           reversePose: { ...head.reversePose },
         });
       } else if (ability === "reverse") {
@@ -393,6 +402,13 @@ export class Game {
     const deadOwners = [...previouslyAlive].filter((id) => !surviving.has(id));
     for (const player of this.players)
       if (surviving.has(player.id)) player.score += deadOwners.length;
+    const markers = new Map<string, Runner>();
+    for (const head of this.heads)
+      if (!head.alive && !surviving.has(head.ownerId))
+        markers.set(head.ownerId, head);
+    this.heads = this.heads.filter(
+      (head) => head.alive || markers.get(head.ownerId) === head,
+    );
     if (
       surviving.size <= 1 &&
       (this.phase === "ready" ||
@@ -554,9 +570,11 @@ export class Game {
       }
     }
     const buckets = new Map<string, typeof movements>();
+    // Candidate pairs must include both heads' maximum boosted travel this tick.
+    const bucketSize = 4 + (4 * SPEED.fast) / 60;
     for (const movement of movements) {
-      const cx = Math.floor(movement.x / 4),
-        cy = Math.floor(movement.y / 4);
+      const cx = Math.floor(movement.x / bucketSize),
+        cy = Math.floor(movement.y / bucketSize);
       for (let dy = -1; dy <= 1; dy++)
         for (let dx = -1; dx <= 1; dx++) {
           for (const other of buckets.get(`${cx + dx},${cy + dy}`) ?? []) {
@@ -564,12 +582,16 @@ export class Game {
               movement.head.ownerId === other.head.ownerId &&
               (this.tick < movement.head.immuneUntil ||
                 this.tick < other.head.immuneUntil);
-            if (
-              !movement.safe &&
-              !other.safe &&
-              !siblingsImmune &&
-              Math.hypot(movement.x - other.x, movement.y - other.y) < 4
-            ) {
+            if (movement.safe || other.safe || siblingsImmune) continue;
+            const x = movement.head.x - other.head.x;
+            const y = movement.head.y - other.head.y;
+            const dx = movement.x - movement.head.x - (other.x - other.head.x);
+            const dy = movement.y - movement.head.y - (other.y - other.head.y);
+            const distance = dx * dx + dy * dy;
+            const time = distance
+              ? Math.max(0, Math.min(1, -(x * dx + y * dy) / distance))
+              : 0;
+            if ((x + dx * time) ** 2 + (y + dy * time) ** 2 < 16) {
               dead.add(movement.head.id);
               dead.add(other.head.id);
             }
@@ -587,6 +609,7 @@ export class Game {
         if (!head.gap)
           this.pending.push({
             id: head.ownerId,
+            headId: head.id,
             x1: head.x,
             y1: head.y,
             x2: x,
@@ -649,7 +672,7 @@ export class Game {
     const pending: Segment[] = [];
     const last = new Map<string, Segment>();
     for (const segment of this.pending) {
-      const previous = last.get(segment.id);
+      const previous = last.get(segment.headId);
       if (
         previous &&
         previous.x2 === segment.x1 &&
@@ -663,9 +686,9 @@ export class Game {
         previous.tick = segment.tick;
         previous.order = segment.order;
       } else {
-        const copy = { ...segment };
+        const { headId, ...copy } = segment;
         pending.push(copy);
-        last.set(segment.id, copy);
+        last.set(headId, copy);
       }
     }
     for (const segment of pending)
@@ -675,6 +698,13 @@ export class Game {
     this.pending = [];
     this.eraseOrders = [];
     return pending;
+  }
+
+  snapshotSegments(): Segment[] {
+    return [
+      ...this.segments,
+      ...this.pending.map(({ headId: _headId, ...segment }) => segment),
+    ];
   }
 
   takeHoles(): Hole[] {

@@ -4,14 +4,16 @@ import type {
   GameSettings,
   LocalPlayer,
   Power,
+  PowerRules,
   RoomView,
   ServerMessage,
   Turn,
 } from "../shared/types";
+import { POWERS } from "../shared/types";
 import { PLAYER_PALETTE } from "../shared/player-palette";
 import GameCanvas, { type FrameData } from "./GameCanvas";
 import type { PredictionInputState } from "./prediction";
-import { DEFAULT_KEYS, keyLabel, newId, steering } from "./controls";
+import { DEFAULT_KEYS, isControlKey, keyLabel, newId, steering } from "./controls";
 import s from "./App.module.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,10 +60,14 @@ const POWER_NAMES: Record<Power, string> = {
 };
 const POWER_ORDER = Object.keys(POWER_NAMES) as Power[];
 
+function playerPower(rules: PowerRules, id: string) {
+  return Object.hasOwn(rules.players, id) ? rules.players[id] : undefined;
+}
+
 function isPowerForced(room: RoomView | null, id: string) {
   return !!room &&
     (room.powerRules.everyone !== null ||
-      room.powerRules.players[id] !== undefined);
+      playerPower(room.powerRules, id) !== undefined);
 }
 
 function loadSlots(): Slot[] {
@@ -69,15 +75,20 @@ function loadSlots(): Slot[] {
     const rejoiningRoom = !!sessionStorage.getItem("kurve-room");
     const saved = JSON.parse(
       sessionStorage.getItem("kurve-players") ?? "null",
-    ) as Slot[] | null;
+    ) as unknown;
     if (
-      saved?.length === 6 &&
+      Array.isArray(saved) && saved.length === 6 &&
       saved.every(
         (slot) =>
-          typeof slot.id === "string" &&
-          typeof slot.name === "string" &&
-          slot.keys?.length === 3,
-      )
+          slot !== null && typeof slot === "object" &&
+          typeof slot.id === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(slot.id) &&
+          typeof slot.name === "string" && slot.name.length <= 24 &&
+          typeof slot.enabled === "boolean" &&
+          (slot.power === undefined || POWERS.some((power) => power === slot.power)) &&
+          Array.isArray(slot.keys) && slot.keys.length === 3 && slot.keys.every(isControlKey),
+      ) &&
+      new Set(saved.map((slot) => slot.id)).size === 6 &&
+      new Set(saved.flatMap((slot) => slot.keys)).size === 18
     )
       return saved.map((slot) => ({
         ...slot,
@@ -118,8 +129,14 @@ export default function App() {
   const [room, setRoom] = useState<RoomView | null>(null);
   const roomRef = useRef(room);
   roomRef.current = room;
+  const confirmedRoomRef = useRef<RoomView | null>(null);
+  const powerRulesDraft = useRef<PowerRules | null>(null);
+  const pendingPowerRulesRequests = useRef(0);
+  const pendingRosterRequests = useRef(0);
   const [powerPreset, setPowerPreset] = useState<Power | "">("");
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const editingNameRef = useRef(editingNameId);
+  editingNameRef.current = editingNameId;
   const [connected, setConnected] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -141,6 +158,8 @@ export default function App() {
   const [binding, setBinding] = useState<{ id: string; index: number } | null>(
     null,
   );
+  const [connectionReplaced, setConnectionReplaced] = useState(false);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const ws = useRef<WebSocket | null>(null);
   const frameRef = useRef<FrameData>({
     tick: 0,
@@ -162,8 +181,8 @@ export default function App() {
   });
   const [countdown, setCountdown] = useState(3);
   const pressed = useRef(new Set<string>());
-  const touch = useRef(new Map<string, Set<Turn>>());
-  const touchPower = useRef(new Set<string>());
+  const touch = useRef(new Map<string, Map<number, Turn>>());
+  const touchPower = useRef(new Map<number, string>());
   const host = room?.hostDeviceId === deviceId;
   const inGame = !!room && room.phase !== "lobby";
   const enabled = slots.filter((slot) => slot.enabled);
@@ -187,17 +206,22 @@ export default function App() {
     let timer: ReturnType<typeof setTimeout>;
     let attempts = 0;
     function connect() {
-      const socket = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`,
-      );
+      let rejoining = false;
+      const endpoint = new URL(import.meta.env.VITE_GAME_SERVER_URL || location.origin);
+      endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+      endpoint.pathname = "/ws";
+      endpoint.search = endpoint.hash = "";
+      const socket = new WebSocket(endpoint.href);
       ws.current = socket;
       socket.onopen = () => {
         if (!active) return socket.close();
         setConnected(true);
+        setConnectionReplaced(false);
         attempts = 0;
         setError("");
         const code = sessionStorage.getItem("kurve-room");
-        if (code)
+        if (code) {
+          rejoining = true;
           socket.send(
             JSON.stringify(
               spectatorRef.current
@@ -213,6 +237,7 @@ export default function App() {
                   },
             ),
           );
+        }
       };
       socket.onmessage = (event) => {
         if (!active) return;
@@ -223,7 +248,18 @@ export default function App() {
           return;
         }
         if (message.type === "room" || message.type === "snapshot") {
+          rejoining = false;
           const previous = roomRef.current;
+          confirmedRoomRef.current = message.room;
+          if (message.type === "snapshot") pendingPowerRulesRequests.current = 0;
+          else if (message.requestType === "powerRules") {
+            pendingPowerRulesRequests.current = Math.max(0, pendingPowerRulesRequests.current - 1);
+          }
+          if (
+            message.type === "snapshot" || message.room.phase !== "lobby" ||
+            message.room.hostDeviceId !== deviceId ||
+            !pendingPowerRulesRequests.current
+          ) powerRulesDraft.current = null;
           if (
             message.type === "snapshot" ||
             message.room.round !== previous?.round ||
@@ -246,6 +282,8 @@ export default function App() {
               message.type === "snapshot" ? message.holes : [];
             frameRef.current.trailRevision =
               message.type === "snapshot" ? message.trailRevision : 0;
+            frameRef.current.trailColors =
+              message.type === "snapshot" ? message.trailColors : undefined;
             frameRef.current.effects =
               message.type === "snapshot" ? message.effects : { darkUntil: 0 };
             frameRef.current.inputAck =
@@ -259,8 +297,18 @@ export default function App() {
             touchPower.current.clear();
             inputRef.current.history = [];
           }
-          roomRef.current = message.room;
-          setRoom(message.room);
+          const nextRoom = powerRulesDraft.current
+            ? { ...message.room, powerRules: powerRulesDraft.current }
+            : message.room;
+          roomRef.current = nextRoom;
+          setRoom(nextRoom);
+          if (message.type === "snapshot") {
+            pendingRosterRequests.current = 0;
+            reconcileRoster(message.room);
+          } else if (message.requestType === "players") {
+            pendingRosterRequests.current = Math.max(0, pendingRosterRequests.current - 1);
+            if (!pendingRosterRequests.current) reconcileRoster(message.room);
+          }
           setSettings(message.room.settings);
           setPending(false);
           sessionStorage.setItem("kurve-room", message.room.code);
@@ -269,6 +317,7 @@ export default function App() {
           if (frame.trailRevision !== message.trailRevision) {
             frame.segments = [];
             frame.holes = [];
+            frame.trailColors = undefined;
           }
           frame.tick = message.tick;
           frame.phase = message.phase;
@@ -287,12 +336,38 @@ export default function App() {
         } else if (message.type === "error") {
           setError(message.message);
           setPending(false);
+          const rejoinRejected = rejoining &&
+            (message.requestType === "join" || message.requestType === "spectate");
+          if (rejoinRejected) {
+            setJoinCode(sessionStorage.getItem("kurve-room") ?? roomRef.current?.code ?? "");
+            setTab("join");
+            setProjector(false);
+          }
+          if (message.requestType === "players") {
+            pendingRosterRequests.current = Math.max(0, pendingRosterRequests.current - 1);
+            const accepted = message.room ?? confirmedRoomRef.current;
+            if (accepted && !pendingRosterRequests.current) reconcileRoster(accepted);
+          }
+          if (message.requestType === "powerRules") {
+            pendingPowerRulesRequests.current = Math.max(0, pendingPowerRulesRequests.current - 1);
+            if (!pendingPowerRulesRequests.current) {
+              powerRulesDraft.current = null;
+              roomRef.current = confirmedRoomRef.current;
+              setRoom(confirmedRoomRef.current);
+            }
+          }
           if (
             !roomRef.current ||
+            rejoinRejected ||
             message.message.startsWith("Room not found.")
           ) {
+            rejoining = false;
             sessionStorage.removeItem("kurve-room");
             roomRef.current = null;
+            confirmedRoomRef.current = null;
+            powerRulesDraft.current = null;
+            pendingPowerRulesRequests.current = 0;
+            pendingRosterRequests.current = 0;
             setRoom(null);
           }
         } else if (message.type === "pong") {
@@ -301,11 +376,22 @@ export default function App() {
           setLatency(Math.round(rtt));
         }
       };
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (!active) return;
         setConnected(false);
+        pressed.current.clear();
+        touch.current.clear();
+        touchPower.current.clear();
+        powerRulesDraft.current = null;
+        pendingPowerRulesRequests.current = 0;
+        pendingRosterRequests.current = 0;
         inputRef.current.history = [];
         setPending(false);
+        if (event.code === 1008 && event.reason === "This device reconnected in another tab.") {
+          setConnectionReplaced(true);
+          setError("This game is open in another tab. Reconnect here to take control.");
+          return;
+        }
         timer = setTimeout(connect, Math.min(8000, 500 * 2 ** attempts++));
       };
       socket.onerror = () => socket.close();
@@ -323,7 +409,7 @@ export default function App() {
       clearInterval(ping);
       ws.current?.close();
     };
-  }, [deviceId, sessionToken]);
+  }, [deviceId, sessionToken, connectionAttempt]);
 
   useEffect(() => {
     sessionStorage.setItem("kurve-players", JSON.stringify(slots));
@@ -352,16 +438,16 @@ export default function App() {
     const inputs = slotsRef.current
       .filter((slot) => localIds.has(slot.id))
       .map((slot) => {
-        const touchKeys = touch.current.get(slot.id);
+        const touchKeys = [...(touch.current.get(slot.id)?.values() ?? [])];
         return {
           id: slot.id,
           turn: steering(
-            pressed.current.has(slot.keys[0]) || !!touchKeys?.has(-1),
-            pressed.current.has(slot.keys[1]) || !!touchKeys?.has(1),
+            pressed.current.has(slot.keys[0]) || touchKeys.includes(-1),
+            pressed.current.has(slot.keys[1]) || touchKeys.includes(1),
           ),
           power:
             pressed.current.has(slot.keys[2]) ||
-            touchPower.current.has(slot.id),
+            [...touchPower.current.values()].includes(slot.id),
         };
       });
     const seq = ++inputRef.current.sequence;
@@ -384,18 +470,7 @@ export default function App() {
           setBinding(null);
           return;
         }
-        if (
-          [
-            "Space",
-            "Tab",
-            "MetaLeft",
-            "MetaRight",
-            "ControlLeft",
-            "ControlRight",
-            "AltLeft",
-            "AltRight",
-          ].includes(event.code)
-        ) {
+        if (!isControlKey(event.code)) {
           setError("Use a letter, number, or arrow key.");
           return;
         }
@@ -529,6 +604,28 @@ export default function App() {
         power,
       }));
   }
+  function reconcileRoster(accepted: RoomView) {
+    const own = accepted.players.filter((player) => player.deviceId === deviceId);
+    const missing = own.filter((player) => !slotsRef.current.some((slot) => slot.id === player.id));
+    const next = slotsRef.current.map((slot) => {
+      const player = own.find((player) => player.id === slot.id) ?? missing.shift();
+      return player ? {
+        ...slot, id: player.id,
+        name: editingNameRef.current === player.id ? slot.name : player.name,
+        enabled: true,
+        power: isPowerForced(accepted, player.id) ? slot.power : player.power,
+      } : { ...slot, enabled: false };
+    });
+    slotsRef.current = next;
+    setSlots(next);
+  }
+  function changePowerRules(rules: PowerRules) {
+    if (!roomRef.current || !send({ type: "powerRules", rules })) return;
+    pendingPowerRulesRequests.current++;
+    powerRulesDraft.current = rules;
+    roomRef.current = { ...roomRef.current, powerRules: rules };
+    setRoom(roomRef.current);
+  }
   function changeSlot(id: string, change: Partial<Slot>, updateServer = true) {
     const next = slotsRef.current.map((slot) =>
       slot.id === id ? { ...slot, ...change } : slot,
@@ -539,8 +636,9 @@ export default function App() {
       updateServer &&
       roomRef.current?.phase === "lobby" &&
       !spectatorRef.current
-    )
-      send({ type: "players", players: roster(next) });
+    ) {
+      if (send({ type: "players", players: roster(next) })) pendingRosterRequests.current++;
+    }
   }
   function createRoom() {
     setError("");
@@ -639,7 +737,7 @@ export default function App() {
     ? latency === null
       ? "Connected"
       : `${latency} ms`
-    : "Reconnecting…";
+    : connectionReplaced ? "Open in another tab" : "Reconnecting…";
 
   return (
     <div
@@ -647,6 +745,12 @@ export default function App() {
     >
       <header className={s.header}>
         <span className={s.connection}>{connectionLabel}</span>
+        {connectionReplaced && (
+          <Button variant="outline" className={s.button} onClick={() => {
+            setConnectionReplaced(false);
+            setConnectionAttempt((attempt) => attempt + 1);
+          }}>Reconnect here</Button>
+        )}
         <Button variant="ghost" className={s.textButton} onClick={fullscreen}>
           Fullscreen
         </Button>
@@ -747,9 +851,9 @@ export default function App() {
                             aria-label={`${displayedName} ability`}
                             value={
                               powerForced
-                                ? (actual?.power ??
-                                  room?.powerRules.players[slot.id] ??
+                                ? ((room ? playerPower(room.powerRules, slot.id) : undefined) ??
                                   room?.powerRules.everyone ??
+                                  actual?.power ??
                                   slot.power ??
                                   "none")
                                 : (slot.power ?? "none")
@@ -917,12 +1021,9 @@ export default function App() {
                           className={s.button}
                           disabled={!connected}
                           onClick={() =>
-                            send({
-                              type: "powerRules",
-                              rules: {
+                            changePowerRules({
                                 everyone: powerPreset || null,
                                 players: {},
-                              },
                             })
                           }
                         >
@@ -933,10 +1034,7 @@ export default function App() {
                           className={s.button}
                           disabled={!connected}
                           onClick={() =>
-                            send({
-                              type: "powerRules",
-                              rules: { everyone: "random", players: {} },
-                            })
+                            changePowerRules({ everyone: "random", players: {} })
                           }
                         >
                           Everyone random
@@ -958,21 +1056,17 @@ export default function App() {
                             <NativeSelect
                               className={s.select}
                               aria-label={`Force superpower for ${player.name}`}
-                              value={room.powerRules.players[player.id] ?? ""}
+                              value={playerPower(room.powerRules, player.id) ?? ""}
                               disabled={!connected}
                               onChange={(event) => {
-                                const players = {
-                                  ...room.powerRules.players,
-                                };
+                                const rules = powerRulesDraft.current ?? roomRef.current!.powerRules;
+                                const players: Record<string, Power> = Object.assign(Object.create(null), rules.players);
                                 if (event.target.value)
                                   players[player.id] = event.target.value as Power;
                                 else delete players[player.id];
-                                send({
-                                  type: "powerRules",
-                                  rules: {
-                                    everyone: room.powerRules.everyone,
+                                changePowerRules({
+                                    everyone: rules.everyone,
                                     players,
-                                  },
                                 });
                               }}
                             >
@@ -1040,7 +1134,12 @@ export default function App() {
                   <Button
                     variant="ghost"
                     className={s.textButton}
-                    onClick={() => setProjector(!projector)}
+                    onClick={() => {
+                      touch.current.clear();
+                      touchPower.current.clear();
+                      sendInputs();
+                      setProjector(!projector);
+                    }}
                   >
                     {projector ? "Exit projector" : "Projector view"}
                   </Button>
@@ -1056,7 +1155,7 @@ export default function App() {
                     (room.phase !== "playing" || !connected) && (
                     <div className={s.arenaOverlay}>
                       {!connected ? (
-                        <h2 className={s.overlayTitle}>Reconnecting…</h2>
+                        <h2 className={s.overlayTitle}>{connectionReplaced ? "Open in another tab" : "Reconnecting…"}</h2>
                       ) : room.phase === "paused" ? (
                         <>
                           <h2 className={s.overlayTitle}>Paused</h2>
@@ -1149,13 +1248,19 @@ export default function App() {
                       <p className={s.overlayCopy}>
                         {host ? (
                           <>
-                            When everyone’s ready, press <kbd>SPACE</kbd> to
-                            start the countdown.
+                            When everyone’s ready, press <kbd>SPACE</kbd> or start
+                            the countdown below.
                           </>
                         ) : (
                           "Waiting for the host to start the countdown."
                         )}
                       </p>
+                      {host && (
+                        <Button className={s.button} disabled={!connected}
+                          onClick={() => send({ type: "countdown" })}>
+                          Start countdown
+                        </Button>
+                      )}
                     </div>
                   )}
                   <div className={s.panelHeader}>
@@ -1216,17 +1321,21 @@ export default function App() {
                                 event.pointerId,
                               );
                               const keys =
-                                touch.current.get(player.id) ?? new Set<Turn>();
-                              keys.add(turn);
+                                touch.current.get(player.id) ?? new Map<number, Turn>();
+                              keys.set(event.pointerId, turn);
                               touch.current.set(player.id, keys);
                               sendInputs();
                             }}
-                            onPointerUp={() => {
-                              touch.current.get(player.id)?.delete(turn);
+                            onPointerUp={(event) => {
+                              touch.current.get(player.id)?.delete(event.pointerId);
                               sendInputs();
                             }}
-                            onPointerCancel={() => {
-                              touch.current.get(player.id)?.delete(turn);
+                            onPointerCancel={(event) => {
+                              touch.current.get(player.id)?.delete(event.pointerId);
+                              sendInputs();
+                            }}
+                            onLostPointerCapture={(event) => {
+                              touch.current.get(player.id)?.delete(event.pointerId);
                               sendInputs();
                             }}
                           >
@@ -1245,18 +1354,22 @@ export default function App() {
                               event.currentTarget.setPointerCapture(
                                 event.pointerId,
                               );
-                              touchPower.current.add(player.id);
+                              touchPower.current.set(event.pointerId, player.id);
                               sendInputs();
                             }}
-                            onPointerUp={() => {
-                              touchPower.current.delete(player.id);
+                            onPointerUp={(event) => {
+                              touchPower.current.delete(event.pointerId);
                               sendInputs();
                             }}
-                            onPointerCancel={() => {
-                              touchPower.current.delete(player.id);
+                            onPointerCancel={(event) => {
+                              touchPower.current.delete(event.pointerId);
                               sendInputs();
                             }}
-                            aria-label={`${player.name} use ${POWER_NAMES[player.power]}`}
+                            onLostPointerCapture={(event) => {
+                              touchPower.current.delete(event.pointerId);
+                              sendInputs();
+                            }}
+                            aria-label={`${player.name} use ${POWER_NAMES[player.roundPower ?? player.power]}`}
                           >
                             ⚡<kbd>{slot ? keyLabel(slot.keys[2]) : ""}</kbd>
                           </Button>

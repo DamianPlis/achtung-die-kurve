@@ -16,7 +16,7 @@ Open **http://localhost:5173** on the host computer. The terminal prints the LAN
 1. Players start unselected. Select up to six on each device by pressing any of their keys. In the lobby, press a player's power key to cycle superpowers; click their color, edit their name, and click a key to rebind it. The host can force one power for everyone (including a one-click random preset) or set different powers per player. At least two connected players are needed to start.
 2. The host clicks **Create room** and shares the five-character code or invite link.
 3. Other devices open the host's address, choose **Join a room**, and enter the code. The room supports 50 players total.
-4. The host clicks **Start game** or presses Space. Space pauses/resumes a running round and starts the next round after it ends.
+4. The host clicks **Start game**, then **Start countdown** when everyone is ready. Space performs these actions too, pauses/resumes a running round, and prepares the next round after it ends.
 5. A projector browser can **Spectate** without using a player slot, then select **Projector view** and fullscreen.
 
 Phones and tablets have touch steering buttons. A keyboard's physical key rollover may limit how many simultaneous keys it detects; spreading players across more devices avoids that hardware limit.
@@ -34,9 +34,13 @@ One Node process serves both the built website and `/ws` on port **3000**, liste
 
 ### Deploy on Vercel
 
-Set the Vercel Framework Preset to **Container** to deploy the root `Dockerfile.vercel` as one website and WebSocket server. Set the project environment variable `PORT=3000` for Preview and Production so routing matches the server. Rooms live in memory, so Vercel scaling or restarting instances can split or end games; reliable multiplayer needs shared room state.
+Set the Vercel Framework Preset to **Container** to deploy the root `Dockerfile.vercel`. Set the project environment variable `PORT=3000` for Preview and Production so HTTP routing matches the server. The Vercel image builds its browser client with `VITE_GAME_SERVER_URL=https://achtung-die-kurve.onrender.com` by default. Both public websites therefore use the Render server's `/ws` and share its rooms. Override that Docker build argument to use a different persistent game server.
 
-The room code selects a room on the server whose URL players opened; it does not discover other computers or servers by itself. A copied `localhost` invite works only on the host; use the LAN address when sharing at school.
+`VITE_GAME_SERVER_URL` is a public **build-time HTTP(S) origin**. It can also be set before `npm run build` for another frontend host. Leave it unset for local/LAN play and same-origin Node hosting. Redeploy the frontend after changing it; a runtime environment change cannot modify an already-built client.
+
+Keep the game backend on **one Render instance**. Vercel's frontend may scale independently. Rooms still live in the authoritative server's memory: restarting or redeploying that backend ends its matches. Multi-instance game hosting requires room ownership routing and shared state before enabling backend scaling. The application does not create or change cloud plan settings.
+
+The room code selects a room on the configured game backend; it does not discover other computers or servers by itself. Clients built with different backends have separate rooms. A copied `localhost` invite works only on the host; use the LAN address when sharing at school.
 
 No paid service or external account is required for LAN play. A public deployment requires a hosting account; this repository does not create one automatically.
 

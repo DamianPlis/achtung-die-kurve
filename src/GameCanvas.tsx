@@ -59,6 +59,7 @@ export default function GameCanvas({
     let animation = 0;
     let cachedPlayers: Player[] | undefined;
     const players = new Map<string, Player>();
+    const trailColors = new Map<string, string>();
     const visuals = new Map<string, RunnerVisual>();
     const history: DrawEvent[] = [];
     let lastPaintedOrder = 0;
@@ -77,11 +78,7 @@ export default function GameCanvas({
         trailContext!.globalCompositeOperation = "destination-out";
         trailContext!.lineWidth = event.width;
       } else {
-        const player = players.get(event.id);
-        trailContext!.strokeStyle =
-          player?.roundPower === "chuck"
-            ? "#fff"
-            : (player?.color ?? "#eafd71");
+        trailContext!.strokeStyle = trailColors.get(event.id) ?? "#eafd71";
         trailContext!.lineWidth = 4;
       }
       trailContext!.stroke();
@@ -98,18 +95,24 @@ export default function GameCanvas({
       const frame = frameRef.current;
       const currentRoom = roomRef.current;
       const inputs = inputRef.current;
-      if (cachedPlayers !== currentRoom.players) {
-        cachedPlayers = currentRoom.players;
-        players.clear();
-        for (const player of cachedPlayers) players.set(player.id, player);
-      }
       if (reset !== frame.reset || trailRevision !== frame.trailRevision) {
         reset = frame.reset;
         trailRevision = frame.trailRevision;
+        cachedPlayers = undefined;
+        trailColors.clear();
+        for (const [id, color] of Object.entries(frame.trailColors ?? {})) trailColors.set(id, color);
         history.length = 0;
         lastPaintedOrder = 0;
         visuals.clear();
         clearTrail();
+      }
+      if (cachedPlayers !== currentRoom.players) {
+        cachedPlayers = currentRoom.players;
+        players.clear();
+        for (const player of cachedPlayers) {
+          players.set(player.id, player);
+          trailColors.set(player.id, player.roundPower === "chuck" ? "#fff" : player.color);
+        }
       }
       const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
       if (resized || lastPixelRatio !== pixelRatio) {

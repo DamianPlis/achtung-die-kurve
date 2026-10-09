@@ -16,6 +16,11 @@ export const DEFAULT_KEYS = [
   ["Digit5", "Digit6", "Digit7"],
 ];
 
+export function isControlKey(code: unknown): code is string {
+  return typeof code === "string" && /^[A-Za-z0-9]{1,32}$/.test(code) &&
+    !["Escape", "Space", "Tab", "MetaLeft", "MetaRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight"].includes(code);
+}
+
 export function keyLabel(code: string) {
   const arrows: Record<string, string> = {
     ArrowLeft: "←",

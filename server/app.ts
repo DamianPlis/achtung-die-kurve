@@ -49,6 +49,8 @@ interface Session {
   messages: number;
   alive: boolean;
   inputSeq: number;
+  pendingBytes: number;
+  snapshotBytes: number;
 }
 interface Options {
   distDir?: string;
@@ -174,9 +176,33 @@ export function createGameServer({
   let previous = performance.now(),
     accumulator = 0;
 
-  function send(socket: WebSocket, message: ServerMessage) {
-    if (socket.readyState === WebSocket.OPEN)
-      socket.send(JSON.stringify(message));
+  function send(socket: WebSocket, message: ServerMessage | string) {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    const session = sessions.get(socket)!;
+    const encoded =
+      typeof message === "string" ? message : JSON.stringify(message);
+    const bytes = Buffer.byteLength(encoded);
+    const snapshot = typeof message !== "string" && message.type === "snapshot";
+    if (
+      session.pendingBytes + (snapshot ? 0 : bytes) > 1_048_576 ||
+      socket.bufferedAmount > session.snapshotBytes + 1_048_576
+    ) {
+      socket.close(1013, "Connection too slow. Reconnect to restore the arena.");
+      return;
+    }
+    // Initial history can exceed the incremental queue budget while compressing.
+    if (snapshot) session.snapshotBytes = bytes;
+    else session.pendingBytes += bytes;
+    const deadline = snapshot
+      ? setTimeout(() => socket.terminate(), 30_000)
+      : undefined;
+    deadline?.unref();
+    socket.send(encoded, (error) => {
+      clearTimeout(deadline);
+      if (snapshot) session.snapshotBytes = 0;
+      else session.pendingBytes -= bytes;
+      if (error) socket.terminate();
+    });
   }
   function view(room: Room): RoomView {
     return {
@@ -194,12 +220,19 @@ export function createGameServer({
       deathmatch: room.game.deathmatch,
     };
   }
-  function broadcastRoom(room: Room) {
+  function broadcastRoom(
+    room: Room,
+    replySocket?: WebSocket,
+    requestType?: "players" | "powerRules",
+  ) {
     for (const [deviceId, device] of room.devices)
       if (device.socket)
-        send(device.socket, { type: "room", room: view(room), deviceId });
+        send(device.socket, {
+          type: "room", room: view(room), deviceId,
+          requestType: device.socket === replySocket ? requestType : undefined,
+        });
   }
-  function roster(room: Room, deviceId: string, players: LocalPlayer[]) {
+  function validateRoster(room: Room, deviceId: string, players: LocalPlayer[]) {
     const others = room.game.players.filter(
       (player) => player.deviceId !== deviceId,
     );
@@ -209,6 +242,17 @@ export function createGameServer({
       players.some((player) => others.some((other) => other.id === player.id))
     )
       fail("A player identifier is already in this room.");
+    return others;
+  }
+  function prunePowerRules(room: Room) {
+    const playerIds = new Set(room.game.players.map((player) => player.id));
+    for (const id of room.selectedPowers.keys())
+      if (!playerIds.has(id)) room.selectedPowers.delete(id);
+    for (const id of Object.keys(room.powerRules.players))
+      if (!playerIds.has(id)) delete room.powerRules.players[id];
+  }
+  function roster(room: Room, deviceId: string, players: LocalPlayer[]) {
+    const others = validateRoster(room, deviceId, players);
     const used = new Set(others.map((player) => player.color));
     const usedNames = new Set(
       others.map((player) => player.name.toLowerCase()),
@@ -218,6 +262,10 @@ export function createGameServer({
         .filter((player) => player.deviceId === deviceId)
         .map((player) => [player.id, player]),
     );
+    for (const player of players) {
+      const retained = existing.get(player.id);
+      if (retained) used.add(retained.color);
+    }
     const own: Player[] = players.map((player) => {
       const old = existing.get(player.id);
       const requested = PLAYER_PALETTE.find(
@@ -264,11 +312,7 @@ export function createGameServer({
       };
     });
     room.game.players = [...others, ...own];
-    const playerIds = new Set(room.game.players.map((player) => player.id));
-    for (const id of room.selectedPowers.keys())
-      if (!playerIds.has(id)) room.selectedPowers.delete(id);
-    for (const id of Object.keys(room.powerRules.players))
-      if (!playerIds.has(id)) delete room.powerRules.players[id];
+    prunePowerRules(room);
     room.devices.get(deviceId)!.playerIds = own.map((player) => player.id);
   }
   function bind(
@@ -284,19 +328,12 @@ export function createGameServer({
       fail("This device session belongs to another connection.");
     if (!old && room.devices.size >= 80)
       fail("This room has too many connected devices.");
-    if (!old && !spectator && room.game.phase !== "lobby")
+    if (!spectator && room.game.phase !== "lobby" && !old?.playerIds.length)
       fail(
         "A match is already running. Join as a spectator or wait for the lobby.",
       );
-    if (!old && !spectator) {
-      const others = room.game.players;
-      if (others.length + players.length > MAX_PLAYERS)
-        fail("A room can have up to fifty players.");
-      if (
-        players.some((player) => others.some((other) => other.id === player.id))
-      )
-        fail("A player identifier is already in this room.");
-    }
+    if (!spectator && room.game.phase === "lobby")
+      validateRoster(room, deviceId, players);
     if (old?.socket && old.socket !== socket)
       old.socket.close(1008, "This device reconnected in another tab.");
     const device: Device = old ?? { playerIds: [], sessionToken };
@@ -308,7 +345,11 @@ export function createGameServer({
     const session = sessions.get(socket)!;
     session.room = room;
     session.deviceId = deviceId;
-    if (!spectator && room.game.phase === "lobby")
+    let eliminated = false;
+    if (spectator && device.playerIds.length) {
+      eliminated = room.game.eliminate(device.playerIds);
+      roster(room, deviceId, []);
+    } else if (!spectator && room.game.phase === "lobby")
       roster(room, deviceId, players);
     for (const player of room.game.players)
       if (player.deviceId === deviceId) player.connected = true;
@@ -318,7 +359,8 @@ export function createGameServer({
       deviceId,
       tick: room.game.tick,
       heads: room.game.publicHeads(),
-      segments: [...room.game.segments, ...room.game.pending],
+      segments: room.game.snapshotSegments(),
+      trailColors: room.game.trailColors,
       holes: room.game.holes,
       trailRevision: room.game.trailRevision,
       effects: room.game.effects,
@@ -326,6 +368,7 @@ export function createGameServer({
       inputAck: session.inputSeq,
     });
     broadcastRoom(room);
+    if (eliminated) broadcastFrame(room);
   }
   function requireHost(session: Session): Room {
     if (!session.room || session.room.hostDeviceId !== session.deviceId)
@@ -401,7 +444,7 @@ export function createGameServer({
         if (room.game.phase !== "lobby")
           fail("Players can only be changed in the lobby.");
         roster(room, session.deviceId, parsePlayers(value.players));
-        broadcastRoom(room);
+        broadcastRoom(room, socket, "players");
         break;
       case "input": {
         if (
@@ -457,7 +500,7 @@ export function createGameServer({
             room.powerRules.everyone ??
             room.selectedPowers.get(player.id) ??
             player.power;
-        broadcastRoom(room);
+        broadcastRoom(room, socket, "powerRules");
         break;
       case "start":
         requireHost(session);
@@ -509,6 +552,8 @@ export function createGameServer({
       messages: 0,
       alive: true,
       inputSeq: 0,
+      pendingBytes: 0,
+      snapshotBytes: 0,
     });
     socket.on("pong", () => {
       sessions.get(socket)!.alive = true;
@@ -527,12 +572,22 @@ export function createGameServer({
         socket.close(1008, "Too many messages.");
         return;
       }
+      let value: unknown;
       try {
-        handle(socket, JSON.parse(data.toString()) as unknown);
+        value = JSON.parse(data.toString()) as unknown;
+        handle(socket, value);
       } catch (error) {
         send(socket, {
           type: "error",
           message: error instanceof Error ? error.message : "Invalid message.",
+          requestType:
+            record(value) && typeof value.type === "string"
+              ? value.type
+              : undefined,
+          room:
+            record(value) && value.type === "players" && session.room
+              ? view(session.room)
+              : undefined,
         });
       }
     });
@@ -576,17 +631,11 @@ export function createGameServer({
     const { inputAck: _inputAck, ...shared } = message;
     const encoded = JSON.stringify(shared).slice(0, -1);
     for (const device of room.devices.values())
-      if (device.socket?.readyState === WebSocket.OPEN) {
-        if (device.socket.bufferedAmount > 1_048_576)
-          device.socket.close(
-            1013,
-            "Connection too slow. Reconnect to restore the arena.",
-          );
-        else
-          device.socket.send(
-            `${encoded},"inputAck":${sessions.get(device.socket)!.inputSeq}}`,
-          );
-      }
+      if (device.socket?.readyState === WebSocket.OPEN)
+        send(
+          device.socket,
+          `${encoded},"inputAck":${sessions.get(device.socket)!.inputSeq}}`,
+        );
   }
   function step() {
     for (const room of rooms.values()) {
@@ -626,6 +675,7 @@ export function createGameServer({
             room.game.players = room.game.players.filter(
               (player) => player.deviceId !== deviceId,
             );
+            prunePowerRules(room);
             room.devices.delete(deviceId);
             broadcastRoom(room);
             if (changed) broadcastFrame(room);
