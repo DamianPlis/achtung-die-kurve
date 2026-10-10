@@ -9,7 +9,7 @@ import type {
   ServerMessage,
   Turn,
 } from "../shared/types";
-import { POWERS } from "../shared/types";
+import { MAP_SIZES, POWERS } from "../shared/types";
 import { PLAYER_PALETTE } from "../shared/player-palette";
 import GameCanvas, { type FrameData } from "./GameCanvas";
 import type { PredictionInputState } from "./prediction";
@@ -36,6 +36,7 @@ type Slot = LocalPlayer & { enabled: boolean; keys: string[] };
 const COLORS = PLAYER_PALETTE.slice(0, 6).map(({ color }) => color);
 const NAMES = PLAYER_PALETTE.slice(0, 6).map(({ name }) => name);
 const DEFAULT_SETTINGS: GameSettings = {
+  mapSize: "recommended",
   speed: "normal",
   targetScore: 0,
   gaps: true,
@@ -1413,6 +1414,23 @@ function GameOptions({
 }) {
   return (
     <div className={s.settings}>
+      <div className={`${s.settingRow} ${s.mapSizeRow}`}>
+        <label htmlFor="map-size">Map size</label>
+        <NativeSelect
+          id="map-size"
+          className={s.select}
+          value={settings.mapSize}
+          onChange={(event) =>
+            change({ mapSize: event.target.value as GameSettings["mapSize"] })
+          }
+        >
+          {Object.entries(MAP_SIZES).map(([value, size]) => (
+            <NativeSelectOption key={value} value={value}>
+              {size.label} · {size.width} × {size.height}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </div>
       <div className={s.settingRow}>
         <label htmlFor="speed">Speed</label>
         <NativeSelect

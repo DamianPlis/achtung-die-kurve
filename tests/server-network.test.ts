@@ -95,6 +95,39 @@ async function roomFixture(graceMs = 30_000) {
   return { app, host, room, connect, join };
 }
 
+test("map size settings are validated, shared, and restricted to the host in the lobby", async () => {
+  const { app, host, room, join } = await roomFixture();
+  try {
+    assert.equal(room.game.settings.mapSize, "recommended");
+    const guest = await join(2);
+    guest.send({ type: "settings", settings: { mapSize: "classic" } });
+    assert.match((await guest.wait("error")).message, /Only the host/);
+    for (const mapSize of ["unknown", "constructor", "__proto__", 1440, true, {}]) {
+      host.send({ type: "settings", settings: { mapSize } });
+      assert.match((await host.wait("error")).message, /Invalid map size/);
+      assert.equal(room.game.settings.mapSize, "recommended");
+    }
+    host.send({ type: "settings", settings: { mapSize: "large" } });
+    const updated = await guest.wait("room", message => message.room.settings.mapSize === "large");
+    assert.equal(updated.room.settings.speed, "normal");
+    host.send({ type: "start" });
+    const started = await guest.wait("room", message => message.room.phase === "ready");
+    assert.deepEqual([started.room.width, started.room.height], [1800, 1200]);
+    host.send({ type: "settings", settings: { mapSize: "classic" } });
+    assert.match((await host.wait("error")).message, /only be changed in the lobby/);
+    assert.equal(room.game.settings.mapSize, "large");
+    host.send({ type: "lobby" });
+    await host.wait("room", message => message.room.phase === "lobby" && message.room.settings.mapSize === "large");
+    host.send({ type: "settings", settings: { mapSize: "classic" } });
+    await guest.wait("room", message => message.room.phase === "lobby" && message.room.settings.mapSize === "classic");
+    host.send({ type: "start" });
+    const restarted = await guest.wait("room", message => message.room.phase === "ready" && message.room.settings.mapSize === "classic");
+    assert.deepEqual([restarted.room.width, restarted.room.height], [1200, 800]);
+  } finally {
+    await app.close();
+  }
+});
+
 test("three six-player devices share one authoritative match, with spectators and ownership checks", async () => {
   const app = createGameServer({ autoTick: false });
   app.server.listen(0, "127.0.0.1");
@@ -349,7 +382,7 @@ test("fifty players on nine devices share powers, map size, holes and private mo
     );
     assert.deepEqual(
       [countdown.room.width, countdown.room.height],
-      [3466, 2310],
+      [4158, 2772],
     );
     for (let index = 0; index < 180; index++) app.step();
     await host.wait("room", (message) => message.room.phase === "playing");
@@ -673,6 +706,15 @@ test("roster limits, settings, malformed payloads, reconnect expiry, and HTTP he
       settings: { targetScore: -1 },
     });
     assert.match((await client.wait("error")).message, /Target score/);
+    client.send({
+      type: "create",
+      deviceId: device(1),
+      sessionToken: token(1),
+      players: roster(1, 2),
+      settings: { mapSize: "constructor" },
+    });
+    assert.match((await client.wait("error")).message, /Invalid map size/);
+    assert.equal(app.rooms.size, 0);
     client.send({
       type: "create",
       deviceId: device(1),

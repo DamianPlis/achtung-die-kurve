@@ -16,7 +16,7 @@ function harness() {
   const view: RoomView = {
     code: "ABCDE", hostDeviceId: "local", phase: "playing", round: 1,
     width: 1200, height: 800, matchTarget: 10,
-    settings: { speed: "normal", targetScore: 0, gaps: true, gapSize: "large", customGapSize: 24 },
+    settings: { mapSize: "classic", speed: "normal", targetScore: 0, gaps: true, gapSize: "large", customGapSize: 24 },
     powerRules: { everyone: null, players: {} },
     players: ["one", "two"].map((id, i) => ({
       id, deviceId: "local", name: id, color: ["#f00", "#00f"][i],

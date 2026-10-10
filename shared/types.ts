@@ -25,7 +25,15 @@ export type Phase =
   | "roundEnd"
   | "finished";
 
+export const MAP_SIZES = {
+  classic: { label: "Classic", width: 1200, height: 800 },
+  recommended: { label: "Recommended", width: 1440, height: 960 },
+  large: { label: "Large", width: 1800, height: 1200 },
+} as const;
+export type MapSize = keyof typeof MAP_SIZES;
+
 export interface GameSettings {
+  mapSize: MapSize;
   speed: "slow" | "normal" | "fast";
   targetScore: number;
   gaps: boolean;

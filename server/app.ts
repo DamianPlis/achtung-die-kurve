@@ -18,7 +18,7 @@ import type {
   ServerMessage,
   Turn,
 } from "../shared/types.js";
-import { POWERS } from "../shared/types.js";
+import { MAP_SIZES, POWERS, type MapSize } from "../shared/types.js";
 import { PLAYER_PALETTE } from "../shared/player-palette.js";
 import { DEFAULT_SETTINGS, Game, MAX_PLAYERS } from "./game.js";
 const COLOR_NAMES = new Set(
@@ -119,11 +119,14 @@ function parsePowerRules(value: unknown, roomPlayers: Player[]): PowerRules {
 }
 function settings(value: unknown, current = DEFAULT_SETTINGS): GameSettings {
   if (!record(value)) fail("Invalid game settings.");
+  const mapSize = value.mapSize ?? current.mapSize;
   const speed = value.speed ?? current.speed;
   const targetScore = value.targetScore ?? current.targetScore;
   const gaps = value.gaps ?? current.gaps;
   const gapSize = value.gapSize ?? current.gapSize;
   const customGapSize = value.customGapSize ?? current.customGapSize;
+  if (typeof mapSize !== "string" || !Object.hasOwn(MAP_SIZES, mapSize))
+    fail("Invalid map size.");
   if (speed !== "slow" && speed !== "normal" && speed !== "fast")
     fail("Invalid speed.");
   if (
@@ -148,7 +151,7 @@ function settings(value: unknown, current = DEFAULT_SETTINGS): GameSettings {
     customGapSize > 50
   )
     fail("Custom gap size must be between 8 and 50 ticks.");
-  return { speed, targetScore, gaps, gapSize, customGapSize };
+  return { mapSize: mapSize as MapSize, speed, targetScore, gaps, gapSize, customGapSize };
 }
 
 export function createGameServer({

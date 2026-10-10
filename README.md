@@ -61,7 +61,7 @@ Move continuously, steer left or right, and avoid walls and every solid trail, i
 
 Tied match leaders play a final deathmatch. All original power choices are available: Run faster, Run slower, Jump, Invisible, Vertical bar, Cross walls, Dark knight, Hydra, Reverse, Square head, Chuck Norris, No superpower, Shoot holes, and Random. Powers and charge counts are authoritative and shared across all devices, including spectators. Dark knight blacks out the arena on every device for three seconds. Hydra is capped at 16 alive heads per player and 256 alive heads per room to bound network and simulation work. Attempts beyond the cap do not consume a charge. Music is not included. UI elements and game code are written independently so you can modify this project.
 
-The arena retains the classic 1200 × 800 size for up to six players. Above six, its area grows in proportion to player count. Arena dimensions stay fixed during a match, and each device fits the entire arena to its screen.
+The host can select Classic (1200 × 800), Recommended (1440 × 960, the default), or Large (1800 × 1200) in the lobby. Recommended is 20% wider and taller than Classic. These sizes apply for up to six players; above six, arena area grows in proportion to player count. Arena dimensions stay fixed during a match, and each device fits the entire arena to its screen.
 
 ## Development
 

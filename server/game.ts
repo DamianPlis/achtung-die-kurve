@@ -1,5 +1,6 @@
 import { advancePose, type Pose } from "../shared/movement.js";
 import {
+  MAP_SIZES,
   POWERS,
   type GameSettings,
   type Head,
@@ -12,12 +13,13 @@ import {
   type WorldEffects,
 } from "../shared/types.js";
 
-export const WIDTH = 1200;
-export const HEIGHT = 800;
+export const WIDTH = MAP_SIZES.recommended.width;
+export const HEIGHT = MAP_SIZES.recommended.height;
 export const MAX_PLAYERS = 50;
 export const MAX_HEADS_PER_PLAYER = 16;
 export const MAX_ALIVE_HEADS = 256;
 export const DEFAULT_SETTINGS: GameSettings = {
+  mapSize: "recommended",
   speed: "normal",
   targetScore: 0,
   gaps: true,
@@ -54,8 +56,8 @@ interface Control {
 
 export class Game {
   phase: Phase = "lobby";
-  width = WIDTH;
-  height = HEIGHT;
+  width: number = WIDTH;
+  height: number = HEIGHT;
   round = 0;
   tick = 0;
   countdown = 0;
@@ -94,8 +96,9 @@ export class Game {
     if (count < 2)
       throw new Error("Add at least two connected players to start.");
     const scale = Math.sqrt(Math.max(6, count) / 6);
-    this.width = Math.ceil((WIDTH * scale) / GRID) * GRID;
-    this.height = Math.ceil((HEIGHT * scale) / GRID) * GRID;
+    const map = MAP_SIZES[this.settings.mapSize];
+    this.width = Math.ceil((map.width * scale) / GRID) * GRID;
+    this.height = Math.ceil((map.height * scale) / GRID) * GRID;
     this.cols = this.width / GRID;
     this.rows = this.height / GRID;
     this.occupied = new Uint16Array(this.cols * this.rows);

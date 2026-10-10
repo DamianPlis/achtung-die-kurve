@@ -6,7 +6,7 @@ import { transformSync } from "esbuild";
 import * as controls from "../src/controls";
 import { PLAYER_PALETTE } from "../shared/player-palette";
 import type { RoomView, ServerMessage } from "../shared/types";
-import { POWERS } from "../shared/types";
+import { MAP_SIZES, POWERS } from "../shared/types";
 
 // Execute the actual App component and its callbacks with deterministic browser hooks.
 const source = readFileSync("src/App.tsx", "utf8");
@@ -21,7 +21,7 @@ const jsx = (type: unknown, props: Record<string, any>): Element => ({ type, pro
 function room(phase: RoomView["phase"] = "playing"): RoomView {
   return {
     code: "ABCDE", hostDeviceId: "local", powerRules: { everyone: null, players: {} },
-    settings: { speed: "normal", targetScore: 0, gaps: true, gapSize: "large", customGapSize: 24 },
+    settings: { mapSize: "classic", speed: "normal", targetScore: 0, gaps: true, gapSize: "large", customGapSize: 24 },
     phase, round: 1, matchTarget: 10, width: 1200, height: 800,
     players: ["one", "two"].map((id, i) => ({
       id, deviceId: "local", name: id, color: PLAYER_PALETTE[i].color,
@@ -78,7 +78,7 @@ function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serv
       if (path === "react") return react;
       if (path === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "Fragment" };
       if (path === "./controls") return controls;
-      if (path === "../shared/types") return { POWERS };
+      if (path === "../shared/types") return { MAP_SIZES, POWERS };
       if (path === "../shared/player-palette") return { PLAYER_PALETTE };
       if (path.endsWith(".css")) return { __esModule: true, default: new Proxy({}, { get: (_obj, key) => key }) };
       if (path === "./GameCanvas") return { __esModule: true, default: "GameCanvas" };
@@ -125,6 +125,31 @@ function text(root: any): string {
   if (root && typeof root === "object") return text(root.props?.children);
   return String(root ?? "");
 }
+
+test("map size defaults to recommended and is included when creating a room", () => {
+  const app = harness(null);
+  const select = elements(app.tree).find(e => e.props.id === "map-size")!;
+  assert.equal(select.props.value, "recommended");
+  assert.deepEqual(elements(select).filter(e => e.type === "NativeSelectOption").map(e => e.props.value), ["classic", "recommended", "large"]);
+  assert.match(text(select), /Recommended.*1440.*960/);
+  select.props.onChange({ target: { value: "large" } });
+  elements(app.render()).find(e => e.type === "Button" && text(e) === "Create room")!.props.onClick();
+  assert.equal(app.sockets[0].sent.at(-1).type, "create");
+  assert.equal(app.sockets[0].sent.at(-1).settings.mapSize, "large");
+});
+
+test("lobby hosts update map size and guests cannot select it", () => {
+  const app = harness(room("lobby"));
+  elements(app.tree).find(e => e.props.id === "map-size")!.props.onChange({ target: { value: "recommended" } });
+  assert.equal(app.sockets[0].sent.at(-1).type, "settings");
+  assert.equal(app.sockets[0].sent.at(-1).settings.mapSize, "recommended");
+  const accepted = room("lobby");
+  accepted.settings.mapSize = "recommended";
+  app.message({ type: "room", room: accepted, deviceId: "local" });
+  assert.equal(elements(app.render()).find(e => e.props.id === "map-size")!.props.value, "recommended");
+  accepted.hostDeviceId = "other";
+  assert.ok(!elements(harness(accepted).tree).some(e => e.props.id === "map-size"));
+});
 
 test("ready hosts can begin countdown by touch or keyboard, including projector mode", () => {
   const app = harness(room("ready"));

@@ -337,6 +337,12 @@
   gap: 8px;
   font-size: 13px;
 }
+.mapSizeRow {
+  flex-wrap: wrap;
+}
+.mapSizeRow .select {
+  padding-right: 32px;
+}
 .select,
 .input {
   color: #ddd;

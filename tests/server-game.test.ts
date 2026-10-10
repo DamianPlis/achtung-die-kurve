@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Player } from "../shared/types.js";
+import { MAP_SIZES, type MapSize } from "../shared/types.js";
 import {
   DEFAULT_SETTINGS,
   Game,
@@ -37,6 +38,42 @@ function running(count = 2, targetScore = 0) {
   return game;
 }
 
+test("map presets set the arena size and retain scaling for larger rosters", () => {
+  assert.equal(DEFAULT_SETTINGS.mapSize, "recommended");
+  const dimensions: Record<MapSize, { base: [number, number]; crowded: [number, number] }> = {
+    classic: { base: [1200, 800], crowded: [1698, 1132] },
+    recommended: { base: [1440, 960], crowded: [2038, 1358] },
+    large: { base: [1800, 1200], crowded: [2546, 1698] },
+  };
+  for (const mapSize of Object.keys(MAP_SIZES) as MapSize[]) {
+    for (const count of [2, 6, 12]) {
+      const game = new Game(players(count), { ...DEFAULT_SETTINGS, mapSize });
+      game.start();
+      const expected = count === 12 ? dimensions[mapSize].crowded : dimensions[mapSize].base;
+      assert.deepEqual(
+        [game.width, game.height],
+        expected,
+      );
+      if (count > 2) game.players[count - 1].connected = false;
+      game.startRound();
+      assert.deepEqual(
+        [game.width, game.height],
+        expected,
+        "a new round keeps the match dimensions after a player disconnects",
+      );
+      game.lobby();
+      game.settings.mapSize = "classic";
+      game.players[count - 1].connected = true;
+      game.start();
+      assert.deepEqual(
+        [game.width, game.height],
+        count === 12 ? dimensions.classic.crowded : dimensions.classic.base,
+        "returning to the lobby applies the next match's selected size",
+      );
+    }
+  }
+});
+
 test("classic countdown, movement, and steering run on fixed simulation ticks", () => {
   const game = running(3);
   assert.equal(game.phase, "playing");
@@ -58,14 +95,14 @@ test("classic countdown, movement, and steering run on fixed simulation ticks", 
 
 test("wall elimination awards every survivor, and first to target wins", () => {
   const game = running(3, 2);
-  game.heads[0].x = 1198;
+  game.heads[0].x = game.width - 2;
   game.step();
   assert.equal(game.heads[0].alive, false);
   assert.deepEqual(
     game.players.map((player) => player.score),
     [0, 1, 1],
   );
-  game.heads[1].x = 1198;
+  game.heads[1].x = game.width - 2;
   game.step();
   assert.deepEqual(
     game.players.map((player) => player.score),
@@ -134,7 +171,7 @@ test("boost and shield have bounded server-side duration and recharge after roun
     game.pending.filter((segment) => segment.id === "player-1").length,
     0,
   );
-  game.heads[0].x = 1198;
+  game.heads[0].x = game.width - 2;
   game.step();
   assert.deepEqual(
     game.players.map((player) => player.charges),
@@ -144,7 +181,7 @@ test("boost and shield have bounded server-side duration and recharge after roun
 
 test("next round resets trails and positions; lobby clears match state", () => {
   const game = running();
-  game.heads[0].x = 1198;
+  game.heads[0].x = game.width - 2;
   game.step();
   game.takeSegments();
   game.startRound();
@@ -440,8 +477,8 @@ test("round results clear the global blackout and timed effects", () => {
 
 test("random resolves once per round, no-power choices do not gain charges, and arena stays fixed", () => {
   const game = running(50);
-  assert.equal(game.width, 3466);
-  assert.equal(game.height, 2310);
+  assert.equal(game.width, 4158);
+  assert.equal(game.height, 2772);
   assert.equal(game.matchTarget, 490);
   game.players[0].power = "random";
   game.players[1].power = "chuck";
