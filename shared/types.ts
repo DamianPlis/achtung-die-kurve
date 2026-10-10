@@ -30,10 +30,11 @@ export const MAP_SIZES = {
   recommended: { label: "Recommended", width: 1440, height: 960 },
   large: { label: "Large", width: 1800, height: 1200 },
 } as const;
-export type MapSize = keyof typeof MAP_SIZES;
+export type MapSize = keyof typeof MAP_SIZES | "custom";
 
 export interface GameSettings {
   mapSize: MapSize;
+  customMapSize: number;
   speed: "slow" | "normal" | "fast";
   targetScore: number;
   gaps: boolean;

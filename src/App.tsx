@@ -10,6 +10,7 @@ import type {
   Turn,
 } from "../shared/types";
 import { MAP_SIZES, POWERS } from "../shared/types";
+import { getMapDimensions, MAX_CUSTOM_MAP_SIZE, MIN_CUSTOM_MAP_SIZE } from "../shared/map-size";
 import { PLAYER_PALETTE } from "../shared/player-palette";
 import GameCanvas, { type FrameData } from "./GameCanvas";
 import type { PredictionInputState } from "./prediction";
@@ -37,6 +38,7 @@ const COLORS = PLAYER_PALETTE.slice(0, 6).map(({ color }) => color);
 const NAMES = PLAYER_PALETTE.slice(0, 6).map(({ name }) => name);
 const DEFAULT_SETTINGS: GameSettings = {
   mapSize: "recommended",
+  customMapSize: 100,
   speed: "normal",
   targetScore: 0,
   gaps: true,
@@ -491,6 +493,7 @@ export default function App() {
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if (
+        event.defaultPrevented ||
         event.target instanceof HTMLInputElement ||
         event.target instanceof HTMLSelectElement
       )
@@ -943,6 +946,7 @@ export default function App() {
                         <GameOptions
                           settings={settings}
                           change={changeSettings}
+                          playerCount={enabled.length}
                         />
                         <Button
                           className={`${s.button} ${s.primaryButton}`}
@@ -1147,7 +1151,11 @@ export default function App() {
                     )}
                   </div>
                   {host && (
-                    <GameOptions settings={settings} change={changeSettings} />
+                    <GameOptions
+                      settings={settings}
+                      change={changeSettings}
+                      playerCount={room.players.filter((player) => player.connected).length}
+                    />
                   )}
                 </div>
               )}
@@ -1439,28 +1447,61 @@ export default function App() {
 function GameOptions({
   settings,
   change,
+  playerCount,
 }: {
   settings: GameSettings;
   change: (value: Partial<GameSettings>) => void;
+  playerCount: number;
 }) {
+  const dimensions = getMapDimensions(settings, playerCount);
   return (
     <div className={s.settings}>
-      <div className={`${s.settingRow} ${s.mapSizeRow}`}>
-        <label htmlFor="map-size">Map size</label>
-        <NativeSelect
-          id="map-size"
-          className={s.select}
-          value={settings.mapSize}
-          onChange={(event) =>
-            change({ mapSize: event.target.value as GameSettings["mapSize"] })
-          }
-        >
-          {Object.entries(MAP_SIZES).map(([value, size]) => (
-            <NativeSelectOption key={value} value={value}>
-              {size.label} · {size.width} × {size.height}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
+      <div className={s.mapSettings}>
+        <div className={`${s.settingRow} ${s.mapSizeRow}`}>
+          <label htmlFor="map-size">Map size</label>
+          <NativeSelect
+            id="map-size"
+            className={s.select}
+            aria-describedby="map-size-help"
+            value={settings.mapSize}
+            onChange={(event) =>
+              change({ mapSize: event.target.value as GameSettings["mapSize"] })
+            }
+          >
+            {Object.entries(MAP_SIZES).map(([value, size]) => {
+              const preset = getMapDimensions({ ...settings, mapSize: value as keyof typeof MAP_SIZES }, playerCount);
+              return (
+                <NativeSelectOption key={value} value={value}>
+                  {size.label} · {preset.width} × {preset.height}
+                </NativeSelectOption>
+              );
+            })}
+            <NativeSelectOption value="custom">Custom</NativeSelectOption>
+          </NativeSelect>
+        </div>
+        {settings.mapSize === "custom" && (
+          <div className={`${s.settingRow} ${s.mapSizeRow}`}>
+            <span id="custom-map-size-label">Custom scale</span>
+            <Slider
+              aria-labelledby="custom-map-size-label"
+              aria-describedby="map-size-help"
+              className="w-36"
+              min={MIN_CUSTOM_MAP_SIZE}
+              max={MAX_CUSTOM_MAP_SIZE}
+              step={5}
+              value={[settings.customMapSize]}
+              onValueChange={(value) =>
+                change({ customMapSize: value[0] ?? settings.customMapSize })
+              }
+            />
+            <output>{settings.customMapSize}%</output>
+          </div>
+        )}
+        <p className={`${s.muted} ${s.mapSizeHelp}`} id="map-size-help">
+          <output aria-label="Map dimensions">{dimensions.width} × {dimensions.height}</output>
+          {" "}for {playerCount} {playerCount === 1 ? "player" : "players"}. Scales automatically above 6 players.
+          {settings.mapSize === "custom" && " 100% = Recommended; 200% = four times the area."}
+        </p>
       </div>
       <div className={s.settingRow}>
         <label htmlFor="speed">Speed</label>

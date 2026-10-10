@@ -337,6 +337,16 @@
   gap: 8px;
   font-size: 13px;
 }
+.mapSettings {
+  display: flex;
+  flex-direction: column;
+  flex-basis: 100%;
+  gap: 8px;
+}
+.mapSizeHelp {
+  margin: 0;
+  line-height: 1.5;
+}
 .mapSizeRow {
   flex-wrap: wrap;
 }

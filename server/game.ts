@@ -1,4 +1,5 @@
 import { advancePose, type Pose } from "../shared/movement.js";
+import { getMapDimensions } from "../shared/map-size.js";
 import {
   MAP_SIZES,
   POWERS,
@@ -20,6 +21,7 @@ export const MAX_HEADS_PER_PLAYER = 16;
 export const MAX_ALIVE_HEADS = 256;
 export const DEFAULT_SETTINGS: GameSettings = {
   mapSize: "recommended",
+  customMapSize: 100,
   speed: "normal",
   targetScore: 0,
   gaps: true,
@@ -95,10 +97,9 @@ export class Game {
     const count = this.players.filter((player) => player.connected).length;
     if (count < 2)
       throw new Error("Add at least two connected players to start.");
-    const scale = Math.sqrt(Math.max(6, count) / 6);
-    const map = MAP_SIZES[this.settings.mapSize];
-    this.width = Math.ceil((map.width * scale) / GRID) * GRID;
-    this.height = Math.ceil((map.height * scale) / GRID) * GRID;
+    const dimensions = getMapDimensions(this.settings, count);
+    this.width = dimensions.width;
+    this.height = dimensions.height;
     this.cols = this.width / GRID;
     this.rows = this.height / GRID;
     this.occupied = new Uint32Array(this.cols * this.rows);

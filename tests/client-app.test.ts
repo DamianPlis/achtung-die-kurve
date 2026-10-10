@@ -7,6 +7,7 @@ import * as controls from "../src/controls";
 import { PLAYER_PALETTE } from "../shared/player-palette";
 import type { RoomView, ServerMessage } from "../shared/types";
 import { MAP_SIZES, POWERS } from "../shared/types";
+import * as mapSize from "../shared/map-size";
 
 // Execute the actual App component and its callbacks with deterministic browser hooks.
 const source = readFileSync("src/App.tsx", "utf8");
@@ -21,7 +22,7 @@ const jsx = (type: unknown, props: Record<string, any>): Element => ({ type, pro
 function room(phase: RoomView["phase"] = "playing"): RoomView {
   return {
     code: "ABCDE", hostDeviceId: "local", powerRules: { everyone: null, players: {} },
-    settings: { mapSize: "classic", speed: "normal", targetScore: 0, gaps: true, gapSize: "large", customGapSize: 24 },
+    settings: { mapSize: "classic", customMapSize: 100, speed: "normal", targetScore: 0, gaps: true, gapSize: "large", customGapSize: 24 },
     phase, round: 1, matchTarget: 10, width: 1200, height: 800,
     players: ["one", "two"].map((id, i) => ({
       id, deviceId: "local", name: id, color: PLAYER_PALETTE[i].color,
@@ -79,6 +80,7 @@ function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serv
       if (path === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "Fragment" };
       if (path === "./controls") return controls;
       if (path === "../shared/types") return { MAP_SIZES, POWERS };
+      if (path === "../shared/map-size") return mapSize;
       if (path === "../shared/player-palette") return { PLAYER_PALETTE };
       if (path.endsWith(".css")) return { __esModule: true, default: new Proxy({}, { get: (_obj, key) => key }) };
       if (path === "./GameCanvas") return { __esModule: true, default: "GameCanvas" };
@@ -110,7 +112,7 @@ function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serv
   return {
     tree, states, storage, intervals, timeouts, listeners, sockets, render,
     message(message: ServerMessage) { sockets.at(-1)!.onmessage?.({ data: JSON.stringify(message) }); },
-    key(code: string, down = true, target: any = {}) { listeners.get(down ? "keydown" : "keyup")?.({ code, target, repeat: false, preventDefault() {} }); },
+    key(code: string, down = true, target: any = {}, defaultPrevented = false) { listeners.get(down ? "keydown" : "keyup")?.({ code, target, defaultPrevented, repeat: false, preventDefault() {} }); },
   };
 }
 function elements(root: any): Element[] {
@@ -130,7 +132,7 @@ test("map size defaults to recommended and is included when creating a room", ()
   const app = harness(null);
   const select = elements(app.tree).find(e => e.props.id === "map-size")!;
   assert.equal(select.props.value, "recommended");
-  assert.deepEqual(elements(select).filter(e => e.type === "NativeSelectOption").map(e => e.props.value), ["classic", "recommended", "large"]);
+  assert.deepEqual(elements(select).filter(e => e.type === "NativeSelectOption").map(e => e.props.value), ["classic", "recommended", "large", "custom"]);
   assert.match(text(select), /Recommended.*1440.*960/);
   select.props.onChange({ target: { value: "large" } });
   elements(app.render()).find(e => e.type === "Button" && text(e) === "Create room")!.props.onClick();
@@ -149,6 +151,61 @@ test("lobby hosts update map size and guests cannot select it", () => {
   assert.equal(elements(app.render()).find(e => e.props.id === "map-size")!.props.value, "recommended");
   accepted.hostDeviceId = "other";
   assert.ok(!elements(harness(accepted).tree).some(e => e.props.id === "map-size"));
+});
+
+test("lobby map options show scaled dimensions for connected players and update with the roster", () => {
+  const view = room("lobby");
+  view.players = Array.from({ length: 50 }, (_, index) => ({ ...view.players[0], id: `p${index}` }));
+  const app = harness(view);
+  const select = elements(app.tree).find(e => e.props.id === "map-size")!;
+  assert.match(text(select), /Classic.*3466.*2310/);
+  assert.match(text(select), /Recommended.*4158.*2772/);
+  assert.match(text(select), /Large.*5198.*3466/);
+  view.players.slice(6).forEach(player => { player.connected = false; });
+  app.message({ type: "room", room: view, deviceId: "local" });
+  const updated = elements(app.render()).find(e => e.props.id === "map-size")!;
+  assert.match(text(updated), /Recommended.*1440.*960/);
+  assert.match(text(elements(app.render()).find(e => e.props.id === "map-size-help")), /for 6 players.*Scales automatically/);
+});
+
+test("custom map slider sends its scale and displays the resulting 50-player dimensions", () => {
+  const view = room("lobby");
+  view.players = Array.from({ length: 50 }, (_, index) => ({ ...view.players[0], id: `p${index}` }));
+  const app = harness(view);
+  elements(app.tree).find(e => e.props.id === "map-size")!.props.onChange({ target: { value: "custom" } });
+  assert.equal(app.sockets[0].sent.at(-1).settings.mapSize, "custom");
+  const slider = elements(app.render()).find(e => e.props["aria-labelledby"] === "custom-map-size-label")!;
+  assert.equal(slider.props.min, 50);
+  assert.equal(slider.props.max, 200);
+  assert.equal(slider.props.step, 5);
+  slider.props.onValueChange([200]);
+  assert.equal(app.sockets[0].sent.at(-1).settings.customMapSize, 200);
+  const rendered = elements(app.render());
+  assert.equal(text(rendered.find(e => e.props["aria-label"] === "Map dimensions")), "8314 × 5544");
+  const accepted = { ...view, settings: { ...view.settings, mapSize: "custom" as const, customMapSize: 200 } };
+  app.message({ type: "snapshot", room: accepted, deviceId: "local", tick: 0, heads: [], segments: [], holes: [], phase: "lobby", inputAck: 0, trailRevision: 0, effects: { darkUntil: 0 } });
+  assert.equal(elements(app.render()).find(e => e.props["aria-labelledby"] === "custom-map-size-label")!.props.value[0], 200);
+});
+
+test("custom map selection and scale are included when creating a room", () => {
+  const app = harness(null);
+  elements(app.tree).find(e => e.props.id === "map-size")!.props.onChange({ target: { value: "custom" } });
+  elements(app.render()).find(e => e.props["aria-labelledby"] === "custom-map-size-label")!.props.onValueChange([50]);
+  elements(app.render()).find(e => e.type === "Button" && text(e) === "Create room")!.props.onClick();
+  assert.equal(app.sockets[0].sent.at(-1).settings.mapSize, "custom");
+  assert.equal(app.sockets[0].sent.at(-1).settings.customMapSize, 50);
+});
+
+test("keys consumed by lobby sliders do not enable players or cycle their powers", () => {
+  const app = harness(room("lobby"));
+  const before = JSON.stringify(app.states[0]);
+  const sent = app.sockets[0].sent.length;
+  for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"])
+    app.key(code, true, {}, true);
+  assert.equal(JSON.stringify(app.states[0]), before);
+  assert.equal(app.sockets[0].sent.length, sent);
+  app.key("ArrowRight");
+  assert.equal(app.sockets[0].sent.at(-1).type, "players");
 });
 
 test("ready hosts can begin countdown by touch or keyboard, including projector mode", () => {

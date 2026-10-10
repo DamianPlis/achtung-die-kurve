@@ -59,6 +59,8 @@ const roster = (id: number, count = 6) =>
     name: `Team ${id}, player ${index}`,
     power: "jump",
   }));
+const invalidMapSizes = [null, "unknown", "constructor", "__proto__", 1440, true, {}];
+const invalidCustomMapSizes = [null, "100", true, {}, NaN, Infinity, -Infinity, -1, 49, 50.5, 201];
 
 async function roomFixture(graceMs = 30_000) {
   const app = createGameServer({ autoTick: false, graceMs });
@@ -99,17 +101,27 @@ test("map size settings are validated, shared, and restricted to the host in the
   const { app, host, room, join } = await roomFixture();
   try {
     assert.equal(room.game.settings.mapSize, "recommended");
+    assert.equal(room.game.settings.customMapSize, 100);
     const guest = await join(2);
-    guest.send({ type: "settings", settings: { mapSize: "classic" } });
+    guest.send({ type: "settings", settings: { mapSize: "custom", customMapSize: 150 } });
     assert.match((await guest.wait("error")).message, /Only the host/);
-    for (const mapSize of ["unknown", "constructor", "__proto__", 1440, true, {}]) {
+    for (const mapSize of invalidMapSizes) {
       host.send({ type: "settings", settings: { mapSize } });
       assert.match((await host.wait("error")).message, /Invalid map size/);
       assert.equal(room.game.settings.mapSize, "recommended");
     }
+    for (const customMapSize of invalidCustomMapSizes) {
+      host.send({ type: "settings", settings: { customMapSize } });
+      assert.match((await host.wait("error")).message, /Custom map size/);
+      assert.equal(room.game.settings.customMapSize, 100);
+    }
+    host.send({ type: "settings", settings: { customMapSize: 125 } });
+    const customUpdated = await guest.wait("room", message => message.room.settings.customMapSize === 125);
+    assert.equal(customUpdated.room.settings.mapSize, "recommended");
     host.send({ type: "settings", settings: { mapSize: "large" } });
     const updated = await guest.wait("room", message => message.room.settings.mapSize === "large");
     assert.equal(updated.room.settings.speed, "normal");
+    assert.equal(updated.room.settings.customMapSize, 125);
     host.send({ type: "start" });
     const started = await guest.wait("room", message => message.room.phase === "ready");
     assert.deepEqual([started.room.width, started.room.height], [1800, 1200]);
@@ -123,6 +135,17 @@ test("map size settings are validated, shared, and restricted to the host in the
     host.send({ type: "start" });
     const restarted = await guest.wait("room", message => message.room.phase === "ready" && message.room.settings.mapSize === "classic");
     assert.deepEqual([restarted.room.width, restarted.room.height], [1200, 800]);
+    host.send({ type: "lobby" });
+    await host.wait("room", message => message.room.phase === "lobby" && message.room.settings.mapSize === "classic");
+    host.send({ type: "settings", settings: { mapSize: "custom", customMapSize: 200 } });
+    await guest.wait("room", message => message.room.phase === "lobby" && message.room.settings.mapSize === "custom");
+    host.send({ type: "start" });
+    const customStarted = await guest.wait("room", message => message.room.phase === "ready" && message.room.settings.mapSize === "custom");
+    assert.equal(customStarted.room.settings.customMapSize, 200);
+    assert.deepEqual([customStarted.room.width, customStarted.room.height], [2880, 1920]);
+    host.send({ type: "settings", settings: { customMapSize: 150 } });
+    assert.match((await host.wait("error")).message, /only be changed in the lobby/);
+    assert.equal(room.game.settings.customMapSize, 200);
   } finally {
     await app.close();
   }
@@ -730,35 +753,40 @@ test("roster limits, settings, malformed payloads, reconnect expiry, and HTTP he
       settings: { targetScore: -1 },
     });
     assert.match((await client.wait("error")).message, /Target score/);
+    for (const [key, values, error] of [
+      ["mapSize", invalidMapSizes, /Invalid map size/],
+      ["customMapSize", invalidCustomMapSizes, /Custom map size/],
+    ] as const) {
+      for (const value of values) {
+        client.send({
+          type: "create",
+          deviceId: device(1),
+          sessionToken: token(1),
+          players: roster(1, 2),
+          settings: { [key]: value },
+        });
+        assert.match((await client.wait("error")).message, error);
+        assert.equal(app.rooms.size, 0);
+      }
+    }
     client.send({
       type: "create",
       deviceId: device(1),
       sessionToken: token(1),
       players: roster(1, 2),
-      settings: { mapSize: "constructor" },
-    });
-    assert.match((await client.wait("error")).message, /Invalid map size/);
-    assert.equal(app.rooms.size, 0);
-    client.send({
-      type: "create",
-      deviceId: device(1),
-      sessionToken: token(1),
-      players: roster(1, 2),
+      settings: { mapSize: "custom", customMapSize: 50 },
     });
     const created = await client.wait("snapshot");
+    assert.equal(created.room.settings.mapSize, "custom");
+    assert.equal(created.room.settings.customMapSize, 50);
     client.send({
       type: "settings",
       settings: { speed: "fast", targetScore: 10 },
     });
-    assert.equal(
-      (
-        await client.wait(
-          "room",
-          (message) => message.room.settings.speed === "fast",
-        )
-      ).room.settings.targetScore,
-      10,
-    );
+    const updated = await client.wait("room", message => message.room.settings.speed === "fast");
+    assert.equal(updated.room.settings.targetScore, 10);
+    assert.equal(updated.room.settings.mapSize, "custom");
+    assert.equal(updated.room.settings.customMapSize, 50);
     client.send({
       type: "players",
       players: [

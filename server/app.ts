@@ -19,6 +19,7 @@ import type {
   Turn,
 } from "../shared/types.js";
 import { MAP_SIZES, POWERS, type MapSize } from "../shared/types.js";
+import { MIN_CUSTOM_MAP_SIZE, MAX_CUSTOM_MAP_SIZE } from "../shared/map-size.js";
 import { PLAYER_PALETTE } from "../shared/player-palette.js";
 import { DEFAULT_SETTINGS, Game, MAX_PLAYERS } from "./game.js";
 const COLOR_NAMES = new Set(
@@ -119,14 +120,22 @@ function parsePowerRules(value: unknown, roomPlayers: Player[]): PowerRules {
 }
 function settings(value: unknown, current = DEFAULT_SETTINGS): GameSettings {
   if (!record(value)) fail("Invalid game settings.");
-  const mapSize = value.mapSize ?? current.mapSize;
+  const mapSize = value.mapSize === undefined ? current.mapSize : value.mapSize;
+  const customMapSize = value.customMapSize === undefined ? current.customMapSize : value.customMapSize;
   const speed = value.speed ?? current.speed;
   const targetScore = value.targetScore ?? current.targetScore;
   const gaps = value.gaps ?? current.gaps;
   const gapSize = value.gapSize ?? current.gapSize;
   const customGapSize = value.customGapSize ?? current.customGapSize;
-  if (typeof mapSize !== "string" || !Object.hasOwn(MAP_SIZES, mapSize))
+  if (typeof mapSize !== "string" || (mapSize !== "custom" && !Object.hasOwn(MAP_SIZES, mapSize)))
     fail("Invalid map size.");
+  if (
+    typeof customMapSize !== "number" ||
+    !Number.isInteger(customMapSize) ||
+    customMapSize < MIN_CUSTOM_MAP_SIZE ||
+    customMapSize > MAX_CUSTOM_MAP_SIZE
+  )
+    fail(`Custom map size must be between ${MIN_CUSTOM_MAP_SIZE} and ${MAX_CUSTOM_MAP_SIZE} percent.`);
   if (speed !== "slow" && speed !== "normal" && speed !== "fast")
     fail("Invalid speed.");
   if (
@@ -151,7 +160,7 @@ function settings(value: unknown, current = DEFAULT_SETTINGS): GameSettings {
     customGapSize > 50
   )
     fail("Custom gap size must be between 8 and 50 ticks.");
-  return { mapSize: mapSize as MapSize, speed, targetScore, gaps, gapSize, customGapSize };
+  return { mapSize: mapSize as MapSize, customMapSize, speed, targetScore, gaps, gapSize, customGapSize };
 }
 
 export function createGameServer({

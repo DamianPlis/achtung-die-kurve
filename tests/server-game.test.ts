@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Player } from "../shared/types.js";
-import { MAP_SIZES, type MapSize } from "../shared/types.js";
+import { MAP_SIZES } from "../shared/types.js";
+import { getMapDimensions } from "../shared/map-size.js";
 import {
   DEFAULT_SETTINGS,
   Game,
@@ -40,12 +41,12 @@ function running(count = 2, targetScore = 0) {
 
 test("map presets set the arena size and retain scaling for larger rosters", () => {
   assert.equal(DEFAULT_SETTINGS.mapSize, "recommended");
-  const dimensions: Record<MapSize, { base: [number, number]; crowded: [number, number] }> = {
+  const dimensions: Record<keyof typeof MAP_SIZES, { base: [number, number]; crowded: [number, number] }> = {
     classic: { base: [1200, 800], crowded: [1698, 1132] },
     recommended: { base: [1440, 960], crowded: [2038, 1358] },
     large: { base: [1800, 1200], crowded: [2546, 1698] },
   };
-  for (const mapSize of Object.keys(MAP_SIZES) as MapSize[]) {
+  for (const mapSize of Object.keys(MAP_SIZES) as (keyof typeof MAP_SIZES)[]) {
     for (const count of [2, 6, 12]) {
       const game = new Game(players(count), { ...DEFAULT_SETTINGS, mapSize });
       game.start();
@@ -53,6 +54,11 @@ test("map presets set the arena size and retain scaling for larger rosters", () 
       assert.deepEqual(
         [game.width, game.height],
         expected,
+      );
+      assert.deepEqual(
+        Object.values(getMapDimensions({ ...game.settings, customMapSize: 200 }, count)),
+        expected,
+        "presets ignore the saved custom percentage",
       );
       if (count > 2) game.players[count - 1].connected = false;
       game.startRound();
@@ -72,6 +78,43 @@ test("map presets set the arena size and retain scaling for larger rosters", () 
       );
     }
   }
+});
+
+test("custom map percentages scale Recommended and keep collision-grid edges aligned", () => {
+  assert.equal(DEFAULT_SETTINGS.customMapSize, 100);
+  for (const [customMapSize, base, crowded, fifty] of [
+    [50, [720, 480], [1020, 680], [2080, 1386]],
+    [100, [1440, 960], [2038, 1358], [4158, 2772]],
+    [200, [2880, 1920], [4074, 2716], [8314, 5544]],
+  ] as const) {
+    for (const [count, expected] of [[2, base], [6, base], [12, crowded], [50, fifty]] as const) {
+      const dimensions = getMapDimensions({ mapSize: "custom", customMapSize }, count);
+      assert.deepEqual([dimensions.width, dimensions.height], expected);
+    }
+  }
+  assert.deepEqual(getMapDimensions({ mapSize: "custom", customMapSize: 51 }, 2), {
+    width: 736,
+    height: 490,
+  });
+});
+
+test("custom arenas count connected players and stay fixed until the next match", () => {
+  const roster = players(50);
+  roster.slice(6).forEach((player) => { player.connected = false; });
+  const game = new Game(roster, { ...DEFAULT_SETTINGS, mapSize: "custom", customMapSize: 200 });
+  game.start();
+  assert.deepEqual([game.width, game.height], [2880, 1920]);
+  assert.equal(game.heads.length, 6);
+  roster.forEach((player) => { player.connected = true; });
+  game.startRound();
+  assert.deepEqual([game.width, game.height], [2880, 1920]);
+  game.lobby();
+  game.start();
+  assert.deepEqual([game.width, game.height], [8314, 5544]);
+  assert.equal(game.heads.length, 50);
+  roster[49].connected = false;
+  game.startRound();
+  assert.deepEqual([game.width, game.height], [8314, 5544]);
 });
 
 test("classic countdown, movement, and steering run on fixed simulation ticks", () => {
