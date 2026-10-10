@@ -546,6 +546,9 @@ export function createGameServer({
   }
 
   wss.on("connection", (socket) => {
+    socket.on("error", () => {
+      socket.terminate();
+    });
     if (wss.clients.size > 200) {
       socket.close(1013, "The server is full.");
       return;
@@ -560,9 +563,6 @@ export function createGameServer({
     });
     socket.on("pong", () => {
       sessions.get(socket)!.alive = true;
-    });
-    socket.on("error", () => {
-      socket.terminate();
     });
     socket.on("message", (data) => {
       const session = sessions.get(socket)!;

@@ -30,7 +30,7 @@ function room(phase: RoomView["phase"] = "playing"): RoomView {
   };
 }
 
-function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serverOrigin?: string) {
+function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serverOrigin?: string, search = "") {
   const states: any[] = [], refs: any[] = [], effects: any[] = [];
   let stateIndex = 0, refIndex = 0, effectIndex = 0;
   const listeners = new Map<string, (event?: any) => void>();
@@ -86,7 +86,7 @@ function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serv
       throw new Error(`Unexpected import: ${path}`);
     },
     sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) },
-    location: { search: "", protocol: "http:", host: "localhost:3000", origin: "http://localhost:3000", pathname: "/", assign() {} },
+    location: { search, protocol: "http:", host: "localhost:3000", origin: "http://localhost:3000", pathname: "/", assign() {} },
     crypto: globalThis.crypto, WebSocket: MockSocket, HTMLInputElement: Input, HTMLSelectElement: Select,
     URL, URLSearchParams, performance: { now: () => 1000 },
     window: { addEventListener: (name: string, callback: any) => listeners.set(name, callback), removeEventListener: (name: string) => listeners.delete(name) },
@@ -182,6 +182,50 @@ test("keyboard opposite directions cancel, blur releases all inputs, power is se
   app.listeners.get("blur")!();
   assert.equal(app.sockets[0].sent.at(-1).inputs[0].turn, 0);
   assert.equal(app.sockets[0].sent.at(-1).inputs[0].power, false);
+});
+
+test("Y and Z steer interchangeably and release independently with either saved binding", () => {
+  for (const binding of ["KeyY", "KeyZ"]) {
+    const slots = PLAYER_PALETTE.slice(0, 6).map((p, i) => ({
+      id: ["one", "two"][i] ?? `player${i}`, name: p.name, enabled: i < 2,
+      power: "boost", keys: i === 0 ? [binding, "KeyQ", "KeyA"] : i === 2 ? ["KeyD", "KeyX", "KeyC"] : [...controls.DEFAULT_KEYS[i]],
+    }));
+    const app = harness(room(), slots);
+    app.key("KeyY");
+    assert.equal(app.sockets[0].sent.at(-1).inputs[0].turn, -1);
+    app.key("KeyY", false);
+    assert.equal(app.sockets[0].sent.at(-1).inputs[0].turn, 0);
+    app.key("KeyZ");
+    assert.equal(app.sockets[0].sent.at(-1).inputs[0].turn, -1);
+    app.key("KeyY");
+    app.key("KeyZ", false);
+    assert.equal(app.sockets[0].sent.at(-1).inputs[0].turn, -1);
+    app.key("KeyY", false);
+    assert.equal(app.sockets[0].sent.at(-1).inputs[0].turn, 0);
+  }
+});
+
+test("both Y and Z enable the default player and activate a rebound power", () => {
+  for (const code of ["KeyY", "KeyZ"]) {
+    const lobby = harness(room("lobby"));
+    lobby.key(code);
+    assert.equal(lobby.states[0][2].enabled, true);
+    assert.equal(lobby.sockets[0].sent.at(-1).players.length, 3);
+
+    const slots = PLAYER_PALETTE.slice(0, 6).map((p, i) => ({
+      id: ["one", "two"][i] ?? `player${i}`, name: p.name, enabled: i < 2,
+      power: "boost", keys: i === 0 ? ["Digit1", "KeyQ", "KeyZ"] : i === 2 ? ["KeyD", "KeyX", "KeyC"] : [...controls.DEFAULT_KEYS[i]],
+    }));
+    const app = harness(room("lobby"), slots);
+    app.key(code);
+    assert.equal(app.states[0][0].power, "slow");
+    app.render();
+    app.message({ type: "room", room: room(), deviceId: "local" });
+    app.key(code);
+    assert.equal(app.sockets[0].sent.at(-1).inputs[0].power, true);
+    app.key(code, false);
+    assert.equal(app.sockets[0].sent.at(-1).inputs[0].power, false);
+  }
 });
 
 test("pause clears held controls and resume waits for fresh input", () => {
@@ -357,6 +401,7 @@ test("malformed saved keys, duplicate identifiers/keys and unsupported powers re
     (slots: any[]) => { slots[0].keys = "abc"; },
     (slots: any[]) => { slots[0].id = slots[1].id; },
     (slots: any[]) => { slots[0].keys[0] = slots[1].keys[0]; },
+    (slots: any[]) => { slots[0].keys[0] = "KeyZ"; },
     (slots: any[]) => { slots[0].power = "unknown"; },
     (slots: any[]) => { slots[0] = null; },
   ]) {
@@ -372,6 +417,7 @@ test("malformed saved keys, duplicate identifiers/keys and unsupported powers re
 test("a reconnect snapshot recovers owned controls after corrupt preferences were discarded", () => {
   const badSlots = PLAYER_PALETTE.slice(0, 6).map((p, i) => ({ id: `p${i}`, name: p.name, enabled: true, keys: [1, 2, 3] }));
   const app = harness(null, badSlots);
+  assert.equal(app.sockets[0].sent.at(-1).type, "join");
   app.message({
     type: "snapshot", room: room(), deviceId: "local", tick: 1, heads: [], segments: [], holes: [],
     phase: "playing", inputAck: 0, trailRevision: 1, effects: { darkUntil: 0 },
@@ -393,10 +439,12 @@ test("rebinding rejects reserved and duplicate keys, then uses a valid new key",
   app.key("KeyQ");
   assert.equal(app.states[0][0].keys[0], "Digit1");
   app.key("KeyZ");
+  assert.equal(app.states[0][0].keys[0], "Digit1");
+  app.key("KeyD");
   app.render();
-  assert.equal(app.states[0][0].keys[0], "KeyZ");
+  assert.equal(app.states[0][0].keys[0], "KeyD");
   app.message({ type: "room", room: room(), deviceId: "local" });
-  app.key("KeyZ");
+  app.key("KeyD");
   assert.equal(app.sockets[0].sent.at(-1).inputs[0].turn, -1);
 });
 
@@ -462,4 +510,121 @@ test("snapshot colors are discarded on a new round or changed trail revision", (
     inputAck: 0, trailRevision: 2, effects: { darkUntil: 0 },
   });
   assert.equal(frame.current.trailColors, undefined);
+});
+
+test("reconnect and reload normalize blank draft player names", () => {
+  for (const name of ["", "   "]) {
+    const app = harness(room("lobby"));
+    const input = elements(app.render()).find(e => e.props["aria-label"] === "Player 1 name")!;
+    input.props.onFocus();
+    input.props.onChange({ target: { value: name } });
+    app.render();
+    const saved = JSON.parse(app.storage.get("kurve-players")!);
+    const reload = harness(null, saved);
+    assert.equal(reload.sockets[0].sent.at(-1).players[0].name, "Player");
+    app.sockets[0].readyState = 3;
+    app.sockets[0].onclose?.({ code: 1006, reason: "" });
+    app.timeouts[0]();
+    app.sockets[1].onopen?.();
+    assert.equal(app.sockets[1].sent.at(-1).players[0].name, "Player");
+  }
+});
+
+test("a new invite takes precedence over saved recovery and accepted rooms still reconnect", () => {
+  const app = harness(null, undefined, undefined, "?room=NEW12");
+  assert.ok(!app.sockets[0].sent.some(message => message.type === "join"));
+  const input = elements(app.render()).find(e => e.props["aria-label"] === "Room code")!;
+  assert.equal(input.props.value, "NEW12");
+  input.props.onChange({ target: { value: "OTHER" } });
+  elements(app.render()).find(e => text(e) === "Join game")!.props.onClick();
+  assert.equal(app.sockets[0].sent.at(-1).code, "OTHER");
+  const accepted = { ...room("lobby"), code: "OTHER" };
+  app.message({ type: "room", room: accepted, deviceId: "local" });
+  app.render();
+  app.sockets[0].readyState = 3;
+  app.sockets[0].onclose?.({ code: 1006, reason: "" });
+  app.timeouts[0]();
+  app.sockets[1].onopen?.();
+  assert.equal(app.sockets[1].sent.at(-1).code, "OTHER");
+  assert.equal(harness(null, undefined, undefined, "?room=abcde").sockets[0].sent.at(-1).code, "ABCDE");
+});
+
+test("pending full-room roster edits preserve accepted seats through disconnect and reload", () => {
+  const accepted = room("lobby");
+  accepted.players.push(...Array.from({ length: 48 }, (_, i) => ({
+    ...accepted.players[0], id: "remote" + i, deviceId: "remote" + i, name: "remote" + i,
+  })));
+  const app = harness(accepted);
+  elements(app.render()).find(e => e.props["aria-label"] === "Enable " + PLAYER_PALETTE[2].name)!.props.onClick();
+  app.render();
+  assert.equal(app.states[0][2].enabled, true);
+  const saved = JSON.parse(app.storage.get("kurve-players")!);
+  assert.equal(saved[2].enabled, false);
+  assert.equal(harness(null, saved).sockets[0].sent.at(-1).players.length, 2);
+  app.sockets[0].readyState = 3;
+  app.sockets[0].onclose?.({ code: 1006, reason: "" });
+  assert.equal(app.states[0][2].enabled, false);
+  app.timeouts[0]();
+  app.sockets[1].onopen?.();
+  assert.equal(app.sockets[1].sent.at(-1).players.length, 2);
+});
+
+test("an intermediate roster acceptance is retained while a newer edit is pending", () => {
+  const app = harness(room("lobby"));
+  for (const i of [2, 3])
+    elements(app.render()).find(e => e.props["aria-label"] === "Enable " + PLAYER_PALETTE[i].name)!.props.onClick();
+  const accepted = room("lobby");
+  accepted.players.push({ ...accepted.players[0], id: "player2", name: PLAYER_PALETTE[2].name });
+  app.message({ type: "room", requestType: "players", room: accepted, deviceId: "local" });
+  app.render();
+  assert.equal(app.states[0][3].enabled, true);
+  const saved = JSON.parse(app.storage.get("kurve-players")!);
+  assert.equal(saved[2].enabled, true);
+  assert.equal(saved[3].enabled, false);
+  assert.equal(harness(null, saved).sockets[0].sent.at(-1).players.length, 3);
+  app.sockets[0].readyState = 3;
+  app.sockets[0].onclose?.({ code: 1006, reason: "" });
+  app.timeouts[0]();
+  app.sockets[1].onopen?.();
+  assert.equal(app.sockets[1].sent.at(-1).players.length, 3);
+});
+
+test("a confirmed empty host reconnects as an observer and can add lobby players again", () => {
+  const view = room();
+  view.players = view.players.map(player => ({ ...player, deviceId: "remote" }));
+  const app = harness(view);
+  app.message({
+    type: "snapshot", room: view, deviceId: "local", tick: 1, heads: [], segments: [], holes: [],
+    phase: "playing", inputAck: 0, trailRevision: 1, effects: { darkUntil: 0 },
+  });
+  app.render();
+  app.sockets[0].readyState = 3;
+  app.sockets[0].onclose?.({ code: 1006, reason: "" });
+  app.timeouts[0]();
+  app.sockets[1].onopen?.();
+  assert.equal(app.sockets[1].sent.at(-1).type, "spectate");
+  assert.equal(app.sockets[1].sent.at(-1).code, "ABCDE");
+  assert.notEqual(app.storage.get("kurve-spectator"), "true");
+  app.message({ type: "room", room: { ...view, phase: "lobby" }, deviceId: "local" });
+  app.render();
+  app.key("Digit1");
+  assert.equal(app.sockets[1].sent.at(-1).type, "players");
+  assert.equal(app.sockets[1].sent.at(-1).players.length, 1);
+});
+
+test("reload with no selected seats automatically observes an active room after join refusal", () => {
+  const saved = PLAYER_PALETTE.slice(0, 6).map((player, i) => ({
+    id: ["one", "two"][i] ?? "player" + i, name: player.name, enabled: false, power: "none", keys: controls.DEFAULT_KEYS[i],
+  }));
+  const app = harness(null, saved);
+  assert.equal(app.sockets[0].sent.at(-1).type, "join");
+  assert.equal(app.sockets[0].sent.at(-1).players.length, 0);
+  app.message({
+    type: "error", requestType: "join",
+    message: "A match is already running. Join as a spectator or wait for the lobby.",
+  });
+  assert.equal(app.sockets[0].sent.at(-1).type, "spectate");
+  assert.equal(app.sockets[0].sent.at(-1).code, "ABCDE");
+  assert.equal(app.storage.get("kurve-room"), "ABCDE");
+  assert.notEqual(app.storage.get("kurve-spectator"), "true");
 });

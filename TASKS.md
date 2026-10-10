@@ -8,5 +8,5 @@
 
 Hardware follow-up: check the updated movement on the MacBook and school Wi-Fi after local verification.
 
-Verification: 79 tests pass; TypeScript and production build pass. Validation includes all fourteen power choices, 50 players plus a spectator, 256 living Hydra heads, large compressed snapshots, slow readers, and cross-origin shared-backend browser checks. Prediction tests cover synthetic 15 ms and 30 ms round-trip delay with jitter. See [the validation report](docs/validation.md) for evidence and limits.
+Verification on 10 October 2026: 100 tests pass; TypeScript and production build pass. Validation includes all fourteen power choices, 50 players plus a spectator, 256 living Hydra heads, rapid and uneven Hydra branching, large compressed snapshots, slow readers, reconnect recovery, mobile control placement, and cross-origin shared-backend browser checks. Prediction tests cover synthetic 15 ms and 30 ms round-trip delay with jitter. See [the latest deep review](docs/deep-review-2026-10-10.md) for evidence and unresolved hosted observations; [the earlier validation report](docs/validation.md) remains historical evidence.
 

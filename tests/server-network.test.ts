@@ -311,6 +311,30 @@ test("packet floods and oversized messages close connections without affecting t
   }
 });
 
+test("an oversized frame from a rejected connection cannot crash a full server", async () => {
+  const { app, host, room } = await roomFixture();
+  try {
+    const address = app.server.address();
+    assert.ok(address && typeof address !== "string");
+    const url = `ws://127.0.0.1:${address.port}/ws`;
+    for (let index = 1; index < 200; index++) {
+      const socket = new WebSocket(url);
+      await once(socket, "open");
+    }
+    const rejected = new WebSocket(url, { perMessageDeflate: false });
+    const closed = once(rejected, "close");
+    rejected.once("open", () => rejected.send("x".repeat(8_193)));
+    await closed;
+    host.send({ type: "ping", at: 123 });
+    await host.wait("pong", message => message.at === 123);
+    assert.equal(app.wss.clients.size, 200);
+    assert.equal(host.socket.readyState, WebSocket.OPEN);
+    assert.equal(app.rooms.get(room.code), room);
+  } finally {
+    await app.close();
+  }
+});
+
 test("fifty players on nine devices share powers, map size, holes and private monotonic acknowledgments", async () => {
   const app = createGameServer({ autoTick: false });
   app.server.listen(0, "127.0.0.1");

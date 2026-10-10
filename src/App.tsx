@@ -13,7 +13,7 @@ import { MAP_SIZES, POWERS } from "../shared/types";
 import { PLAYER_PALETTE } from "../shared/player-palette";
 import GameCanvas, { type FrameData } from "./GameCanvas";
 import type { PredictionInputState } from "./prediction";
-import { DEFAULT_KEYS, isControlKey, keyLabel, newId, steering } from "./controls";
+import { DEFAULT_KEYS, isControlKey, keyLabel, newId, normalizeControlKey, steering } from "./controls";
 import s from "./App.module.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,10 +89,11 @@ function loadSlots(): Slot[] {
           Array.isArray(slot.keys) && slot.keys.length === 3 && slot.keys.every(isControlKey),
       ) &&
       new Set(saved.map((slot) => slot.id)).size === 6 &&
-      new Set(saved.flatMap((slot) => slot.keys)).size === 18
+      new Set(saved.flatMap((slot) => slot.keys).map(normalizeControlKey)).size === 18
     )
       return saved.map((slot) => ({
         ...slot,
+        keys: slot.keys.map(normalizeControlKey),
         enabled: rejoiningRoom && slot.enabled,
       }));
   } catch {
@@ -220,21 +221,24 @@ export default function App() {
         setConnectionReplaced(false);
         attempts = 0;
         setError("");
-        const code = sessionStorage.getItem("kurve-room");
+        const savedCode = sessionStorage.getItem("kurve-room");
+        const inviteCode = new URLSearchParams(location.search).get("room")?.trim().toUpperCase();
+        const code = roomRef.current?.code ??
+          (!inviteCode || inviteCode === savedCode ? savedCode : null);
         if (code) {
           rejoining = true;
+          const watch = spectatorRef.current ||
+            confirmedRoomRef.current?.players.every((player) => player.deviceId !== deviceId);
           socket.send(
             JSON.stringify(
-              spectatorRef.current
+              watch
                 ? { type: "spectate", code, deviceId, sessionToken }
                 : {
                     type: "join",
                     code,
                     deviceId,
                     sessionToken,
-                    players: slotsRef.current
-                      .filter((slot) => slot.enabled)
-                      .map(({ id, name, power }) => ({ id, name, power })),
+                    players: roster(),
                   },
             ),
           );
@@ -339,6 +343,18 @@ export default function App() {
           setPending(false);
           const rejoinRejected = rejoining &&
             (message.requestType === "join" || message.requestType === "spectate");
+          if (
+            rejoinRejected && message.requestType === "join" &&
+            message.message === "A match is already running. Join as a spectator or wait for the lobby." &&
+            !slotsRef.current.some((slot) => slot.enabled)
+          ) {
+            socket.send(JSON.stringify({
+              type: "spectate", code: roomRef.current?.code ?? sessionStorage.getItem("kurve-room"),
+              deviceId, sessionToken,
+            }));
+            setError("");
+            return;
+          }
           if (rejoinRejected) {
             setJoinCode(sessionStorage.getItem("kurve-room") ?? roomRef.current?.code ?? "");
             setTab("join");
@@ -385,6 +401,8 @@ export default function App() {
         touchPower.current.clear();
         powerRulesDraft.current = null;
         pendingPowerRulesRequests.current = 0;
+        if (pendingRosterRequests.current && confirmedRoomRef.current)
+          reconcileRoster(confirmedRoomRef.current);
         pendingRosterRequests.current = 0;
         inputRef.current.history = [];
         setPending(false);
@@ -413,8 +431,18 @@ export default function App() {
   }, [deviceId, sessionToken, connectionAttempt]);
 
   useEffect(() => {
-    sessionStorage.setItem("kurve-players", JSON.stringify(slots));
-  }, [slots]);
+    const accepted = confirmedRoomRef.current;
+    sessionStorage.setItem("kurve-players", JSON.stringify(
+      pendingRosterRequests.current && accepted
+        ? slots.map((slot) => ({
+            ...slot,
+            enabled: accepted.players.some((player) =>
+              player.deviceId === deviceId && player.id === slot.id,
+            ),
+          }))
+        : slots,
+    ));
+  }, [slots, room?.players, deviceId]);
   useEffect(() => {
     setPowerPreset(room?.powerRules.everyone ?? "");
   }, [room?.powerRules.everyone]);
@@ -436,6 +464,8 @@ export default function App() {
         .filter((player) => player.deviceId === deviceId)
         .map((player) => player.id),
     );
+    // Track physical keys separately so releasing Y does not release a held Z.
+    const heldKeys = new Set(Array.from(pressed.current, normalizeControlKey));
     const inputs = slotsRef.current
       .filter((slot) => localIds.has(slot.id))
       .map((slot) => {
@@ -443,11 +473,11 @@ export default function App() {
         return {
           id: slot.id,
           turn: steering(
-            pressed.current.has(slot.keys[0]) || touchKeys.includes(-1),
-            pressed.current.has(slot.keys[1]) || touchKeys.includes(1),
+            heldKeys.has(slot.keys[0]) || touchKeys.includes(-1),
+            heldKeys.has(slot.keys[1]) || touchKeys.includes(1),
           ),
           power:
-            pressed.current.has(slot.keys[2]) ||
+            heldKeys.has(slot.keys[2]) ||
             [...touchPower.current.values()].includes(slot.id),
         };
       });
@@ -465,6 +495,7 @@ export default function App() {
         event.target instanceof HTMLSelectElement
       )
         return;
+      const code = normalizeControlKey(event.code);
       if (binding) {
         event.preventDefault();
         if (event.code === "Escape") {
@@ -478,8 +509,8 @@ export default function App() {
         if (
           slotsRef.current.some((slot) =>
             slot.keys.some(
-              (code, index) =>
-                code === event.code &&
+              (key, index) =>
+                key === code &&
                 (slot.id !== binding.id || index !== binding.index),
             ),
           )
@@ -493,7 +524,7 @@ export default function App() {
               ? {
                   ...slot,
                   keys: slot.keys.map((key, index) =>
-                    index === binding.index ? event.code : key,
+                    index === binding.index ? code : key,
                   ),
                 }
               : slot,
@@ -532,12 +563,12 @@ export default function App() {
         !spectatorRef.current
       ) {
         const slot = slotsRef.current.find((candidate) =>
-          candidate.keys.includes(event.code),
+          candidate.keys.includes(code),
         );
         if (slot) {
           event.preventDefault();
           if (event.repeat) return;
-          if (slot.keys[2] === event.code) {
+          if (slot.keys[2] === code) {
             if (isPowerForced(roomRef.current, slot.id)) {
               if (!slot.enabled) changeSlot(slot.id, { enabled: true });
             } else {
@@ -555,7 +586,7 @@ export default function App() {
       }
       if (
         !slotsRef.current.some(
-          (slot) => slot.enabled && slot.keys.includes(event.code),
+          (slot) => slot.enabled && slot.keys.includes(code),
         ) ||
         roomRef.current?.phase !== "playing"
       )

@@ -21,6 +21,10 @@ export function isControlKey(code: unknown): code is string {
     !["Escape", "Space", "Tab", "MetaLeft", "MetaRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight"].includes(code);
 }
 
+export function normalizeControlKey(code: string) {
+  return code === "KeyZ" ? "KeyY" : code;
+}
+
 export function keyLabel(code: string) {
   const arrows: Record<string, string> = {
     ArrowLeft: "←",
@@ -28,6 +32,8 @@ export function keyLabel(code: string) {
     ArrowUp: "↑",
     ArrowDown: "↓",
     Space: "SPACE",
+    KeyY: "Y/Z",
+    KeyZ: "Y/Z",
   };
   return arrows[code] ?? code.replace(/^(Key|Digit|Numpad)/, "").toUpperCase();
 }

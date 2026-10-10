@@ -599,6 +599,161 @@ test("Hydra splits survive past immunity at every game speed", () => {
   }
 });
 
+test("rapid Hydra splits retain four heads after immunity at every speed", () => {
+  for (const speed of ["slow", "normal", "fast"] as const) {
+    for (const delay of [0, 1, 6, 10]) {
+      const game = running(3);
+      game.settings.speed = speed;
+      game.players[0].power = "hydra";
+      game.step();
+      assert.equal(game.input("player-0", 0, true), true);
+      game.input("player-0", 0, false);
+      for (let tick = 0; tick < delay; tick++) game.step();
+      assert.equal(game.input("player-0", 0, true), true);
+      const heads = game.heads.filter((head) => head.ownerId === "player-0");
+      assert.equal(heads.length, 4);
+      assert.equal(game.players[0].charges, 0);
+      const until = Math.max(...heads.map((head) => head.immuneUntil));
+      while (game.tick <= until + 10) game.step();
+      assert.ok(heads.every((head) => head.alive), speed + ", " + delay + "-tick delay");
+      assert.deepEqual(game.players.map((player) => player.score), [0, 0, 0]);
+    }
+  }
+});
+
+test("four rapid Hydra uses preserve sixteen separate trails through 600 ticks", () => {
+  for (const speed of ["slow", "normal", "fast"] as const) {
+    const game = running(3);
+    game.settings.speed = speed;
+    game.players[0].power = "hydra";
+    game.players[0].charges = 6;
+    game.heads.forEach((head, index) => Object.assign(head, {
+      x: 200, y: index === 0 ? game.height / 2 : index === 1 ? 30 : game.height - 30,
+    }));
+    game.step();
+    for (let use = 0; use < 4; use++) {
+      game.input("player-0", 0, false);
+      assert.equal(game.input("player-0", 0, true), true);
+    }
+    const heads = game.heads.filter((head) => head.ownerId === "player-0");
+    assert.equal(heads.length, MAX_HEADS_PER_PLAYER);
+    assert.equal(new Set(heads.map((head) => head.angle)).size, MAX_HEADS_PER_PLAYER);
+    assert.equal(game.players[0].charges, 2);
+    const until = Math.max(...heads.map((head) => head.immuneUntil));
+    for (let tick = 0; tick < 600; tick++) {
+      game.step();
+      if (tick % 3 === 0) game.takeSegments();
+    }
+    assert.ok(game.tick > until);
+    assert.ok(heads.every((head) => head.alive), speed);
+    assert.equal(game.phase, "playing");
+    assert.deepEqual(game.players.map((player) => player.score), [0, 0, 0]);
+  }
+});
+
+test("Hydra preserves uneven families after one branch hits a wall", () => {
+  for (const speed of ["slow", "normal", "fast"] as const) {
+    const game = running(3);
+    game.settings.speed = speed;
+    game.players[0].power = "hydra";
+    game.players[0].charges = 6;
+    game.step();
+    for (let use = 0; use < 2; use++) {
+      game.input("player-0", 0, false);
+      game.input("player-0", 0, true);
+    }
+    const removed = game.heads.filter((head) => head.ownerId === "player-0")
+      .sort((a, b) => a.angle - b.angle)[0];
+    Object.assign(removed, { x: game.width - 2, angle: 0 });
+    game.step();
+    assert.equal(removed.alive, false);
+    assert.equal(game.heads.filter((head) => head.ownerId === "player-0").length, 3);
+    game.input("player-0", 0, false);
+    assert.equal(game.input("player-0", 0, true), true);
+    const heads = game.heads.filter((head) => head.ownerId === "player-0");
+    assert.equal(heads.length, 6);
+    const until = Math.max(...heads.map((head) => head.immuneUntil));
+    while (game.tick <= until + 10) game.step();
+    assert.ok(heads.every((head) => head.alive), speed);
+    assert.deepEqual(game.players.map((player) => player.score), [0, 0, 0]);
+  }
+});
+
+test("Hydra keeps narrow surviving families separate after other branches hit walls", () => {
+  for (const speed of ["slow", "normal", "fast"] as const) {
+    const game = running(3);
+    game.settings.speed = speed;
+    game.players[0].power = "hydra";
+    game.players[0].charges = 6;
+    game.heads.forEach((head, index) => Object.assign(head, {
+      x: 200, y: index === 0 ? game.height / 2 : index === 1 ? 30 : game.height - 30,
+    }));
+    game.step();
+    for (let use = 0; use < 4; use++) {
+      game.input("player-0", 0, false);
+      game.input("player-0", 0, true);
+    }
+    for (let tick = 0; tick < 160; tick++) game.step();
+    const owned = game.heads.filter((head) => head.ownerId === "player-0");
+    const survivors = [...owned].sort((a, b) => Math.abs(a.angle) - Math.abs(b.angle)).slice(0, 2);
+    for (const head of owned)
+      if (!survivors.includes(head)) Object.assign(head, { x: game.width - 2, angle: 0 });
+    game.step();
+    assert.equal(game.heads.filter((head) => head.ownerId === "player-0").length, 2);
+    game.input("player-0", 0, false);
+    assert.equal(game.input("player-0", 0, true), true);
+    const heads = game.heads.filter((head) => head.ownerId === "player-0");
+    assert.equal(heads.length, 4);
+    const until = Math.max(...heads.map((head) => head.immuneUntil));
+    while (game.tick <= until + 10) game.step();
+    assert.ok(heads.every((head) => head.alive), speed);
+    assert.deepEqual(game.players.map((player) => player.score), [0, 0, 0]);
+  }
+});
+
+test("Hydra rejects effectively parallel directions without spending a charge", () => {
+  const game = running(3);
+  game.players[0].power = "hydra";
+  game.input("player-0", 0, true);
+  const heads = game.heads.filter((head) => head.ownerId === "player-0");
+  heads[1].angle = heads[0].angle + 1e-7;
+  game.input("player-0", 0, false);
+  assert.equal(game.input("player-0", 0, true), false);
+  assert.equal(game.players[0].charges, 1);
+  assert.equal(game.heads.filter((head) => head.ownerId === "player-0").length, 2);
+});
+
+test("Hydra trail ownership retains indices beyond the sixteen-bit boundary", () => {
+  for (const lastIndex of [65535, 65536]) {
+    const game = running(3);
+    game.players[0].power = "hydra";
+    (game as unknown as { headIndex: number }).headIndex = lastIndex;
+    game.input("player-0", 0, true);
+    const clone = game.heads.find((head) => head.ownerId === "player-0" && head.index === lastIndex + 1)!;
+    for (let tick = 0; tick < 10; tick++) game.step();
+    const crossing = { x: clone.x, y: clone.y };
+    for (let tick = 0; tick < 10; tick++) game.step();
+    assert.equal(clone.alive, true, "recent own trail must retain the full head index");
+    const other = game.heads.find((head) => head.ownerId === "player-1")!;
+    Object.assign(other, { x: crossing.x, y: crossing.y + 12, angle: -Math.PI / 2 });
+    for (let tick = 0; tick < 7; tick++) game.step();
+    assert.equal(other.alive, false, "the clone's older trail remains solid");
+    assert.equal(clone.alive, true);
+  }
+});
+
+test("Hydra refuses exhausted trail indices without spending a charge", () => {
+  const game = running(3);
+  game.players[0].power = "hydra";
+  (game as unknown as { headIndex: number }).headIndex = 0xfffffffe;
+  assert.equal(game.input("player-0", 0, true), true);
+  assert.ok(game.heads.some((head) => head.index === 0xffffffff));
+  game.input("player-0", 0, false);
+  assert.equal(game.input("player-0", 0, true), false);
+  assert.equal(game.players[0].charges, 1);
+  assert.equal(game.heads.filter((head) => head.ownerId === "player-0").length, 2);
+});
+
 test("boosted head collisions include paths between ticks, preserving near misses and invisible heads", () => {
   const travel = (115 * 2) / 60;
   for (const [offset, separation, invisible] of [
@@ -738,7 +893,7 @@ test("50 Hydra players with earned charges keep dead markers and published heads
     assert.ok(game.heads.length <= MAX_ALIVE_HEADS + 50);
     assert.equal(game.publicHeads().length, game.heads.length);
   }
-  assert.ok(activations > 250);
+  assert.ok(activations > 50 * 4, "earned charges drive repeated generations");
   for (const player of game.players) {
     const owned = game.heads.filter((head) => head.ownerId === player.id);
     const alive = owned.filter((head) => head.alive);

@@ -74,7 +74,7 @@ export class Game {
   pendingHoles: Hole[] = [];
   private cols = WIDTH / GRID;
   private rows = HEIGHT / GRID;
-  private occupied = new Uint16Array(this.cols * this.rows);
+  private occupied = new Uint32Array(this.cols * this.rows);
   private written = new Uint32Array(this.cols * this.rows);
   private gaps = new Uint8Array(this.cols * this.rows);
   private controls = new Map<string, Control>();
@@ -101,7 +101,7 @@ export class Game {
     this.height = Math.ceil((map.height * scale) / GRID) * GRID;
     this.cols = this.width / GRID;
     this.rows = this.height / GRID;
-    this.occupied = new Uint16Array(this.cols * this.rows);
+    this.occupied = new Uint32Array(this.cols * this.rows);
     this.written = new Uint32Array(this.cols * this.rows);
     this.gaps = new Uint8Array(this.cols * this.rows);
     for (const player of this.players) {
@@ -272,14 +272,23 @@ export class Game {
       (ability === "dark" && this.tick < this.effects.darkUntil)
     )
       return false;
-    // ponytail: bound Hydra replication for school Wi-Fi; raise only after profiling larger rooms.
-    if (
-      ability === "hydra" &&
-      (heads.length * 2 > MAX_HEADS_PER_PLAYER ||
-        this.heads.filter((head) => head.alive).length + heads.length >
-          MAX_ALIVE_HEADS)
-    )
-      return false;
+    let spread = Math.PI / 20;
+    if (ability === "hydra") {
+      if (
+        this.headIndex + heads.length > 0xffffffff ||
+        heads.length * 2 > MAX_HEADS_PER_PLAYER ||
+        this.heads.filter((head) => head.alive).length + heads.length > MAX_ALIVE_HEADS
+      ) return false;
+      // Leave equal angular room between siblings and neighboring families.
+      for (let index = 0; index < heads.length; index++) {
+        for (let other = index + 1; other < heads.length; other++) {
+          const angle = heads[index].angle - heads[other].angle;
+          spread = Math.min(spread, Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) / 4);
+        }
+      }
+      // Effectively parallel branches cannot separate without excessive immunity.
+      if (spread < 1e-6) return false;
+    }
     player.charges--;
     if (timed) {
       control.active = ability;
@@ -314,7 +323,6 @@ export class Game {
         );
       } else if (ability === "hydra") {
         const before = head.angle;
-        const spread = Math.PI / 20;
         head.angle -= spread;
         // Keep siblings immune until their trails separate, including at slow speed.
         head.immuneUntil =

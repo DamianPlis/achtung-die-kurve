@@ -768,13 +768,22 @@
   .tableFooter {
     flex-wrap: wrap;
   }
-  .gameLayout {
+  .main:has(.gameLayout) {
     display: flex;
     flex-direction: column;
+    gap: 16px;
   }
+  .gameLayout,
+  .projector .gameLayout,
   .projector .gameLayout.projectorReady {
-    display: flex;
-    flex-direction: column;
+    display: contents;
+  }
+  .touchControls {
+    order: 1;
+    margin-top: 0;
+  }
+  .scoreboard {
+    order: 2;
   }
   .arenaPanel,
   .scoreboard {
