@@ -21,7 +21,7 @@ import type {
 import { MAP_SIZES, POWERS, type MapSize } from "../shared/types.js";
 import { MIN_CUSTOM_MAP_SIZE, MAX_CUSTOM_MAP_SIZE } from "../shared/map-size.js";
 import { PLAYER_PALETTE } from "../shared/player-palette.js";
-import { DEFAULT_SETTINGS, Game, MAX_PLAYERS } from "./game.js";
+import { DEFAULT_SETTINGS, Game, MAX_HEADS_PER_PLAYER, MAX_PLAYERS } from "./game.js";
 const COLOR_NAMES = new Set(
   PLAYER_PALETTE.flatMap(({ name, color }) => [
     name.toLowerCase(),
@@ -42,6 +42,7 @@ interface Room {
   devices: Map<string, Device>;
   powerRules: PowerRules;
   selectedPowers: Map<string, Power>;
+  localRound?: { deviceId: string; completed: boolean; playerIds: string[] };
 }
 interface Session {
   room?: Room;
@@ -230,6 +231,10 @@ export function createGameServer({
       height: room.game.height,
       winnerId: room.game.winnerId,
       deathmatch: room.game.deathmatch,
+      localRound: room.localRound && {
+        deviceId: room.localRound.deviceId,
+        completed: room.localRound.completed,
+      },
     };
   }
   function broadcastRoom(
@@ -340,11 +345,11 @@ export function createGameServer({
       fail("This device session belongs to another connection.");
     if (!old && room.devices.size >= 80)
       fail("This room has too many connected devices.");
-    if (!spectator && room.game.phase !== "lobby" && !old?.playerIds.length)
+    if (!spectator && room.game.phase !== "lobby" && !room.localRound && !old?.playerIds.length)
       fail(
         "A match is already running. Join as a spectator or wait for the lobby.",
       );
-    if (!spectator && room.game.phase === "lobby")
+    if (!spectator && (room.game.phase === "lobby" || (room.localRound && !old?.playerIds.length)))
       validateRoster(room, deviceId, players);
     if (old?.socket && old.socket !== socket)
       old.socket.close(1008, "This device reconnected in another tab.");
@@ -352,16 +357,18 @@ export function createGameServer({
     device.socket = socket;
     device.disconnectedAt = undefined;
     room.devices.set(deviceId, device);
-    if (!room.devices.get(room.hostDeviceId)?.socket)
+    if (!room.devices.get(room.hostDeviceId)?.socket && !room.localRound)
       room.hostDeviceId = deviceId;
     const session = sessions.get(socket)!;
     session.room = room;
     session.deviceId = deviceId;
     let eliminated = false;
     if (spectator && device.playerIds.length) {
+      if (room.localRound?.deviceId === deviceId && !room.localRound.completed)
+        cancelLocalRound(room);
       eliminated = room.game.eliminate(device.playerIds);
       roster(room, deviceId, []);
-    } else if (!spectator && room.game.phase === "lobby")
+    } else if (!spectator && (room.game.phase === "lobby" || (room.localRound && !old?.playerIds.length)))
       roster(room, deviceId, players);
     for (const player of room.game.players)
       if (player.deviceId === deviceId) player.connected = true;
@@ -386,6 +393,77 @@ export function createGameServer({
     if (!session.room || session.room.hostDeviceId !== session.deviceId)
       fail("Only the host can manage this match.");
     return session.room;
+  }
+  function cancelLocalRound(room: Room) {
+    room.localRound = undefined;
+    room.game.lobby();
+  }
+  function selectRoundMode(room: Room, local: unknown) {
+    const devices = [...room.devices].filter(([, device]) => device.socket);
+    room.localRound = local === true && room.game.phase === "ready" && devices.length === 1 &&
+      devices[0][0] === room.hostDeviceId &&
+      room.game.players.every(player => player.deviceId === room.hostDeviceId)
+      ? {
+          deviceId: room.hostDeviceId, completed: false,
+          playerIds: room.game.players.map(player => player.id),
+        }
+      : undefined;
+  }
+  function localOwner(session: Session, round: unknown) {
+    const room = requireHost(session);
+    if (room.localRound?.deviceId !== session.deviceId || round !== room.game.round)
+      fail("This device does not own the local round.");
+    return room;
+  }
+  function completeLocalRound(room: Room, value: Record<string, unknown>) {
+    const local = room.localRound!;
+    if (local.completed) return;
+    if (!Number.isSafeInteger(value.tick) || (value.tick as number) < 180 ||
+      (value.tick as number) > 2_000_000_000)
+      fail("Invalid local round duration.");
+    if (!Array.isArray(value.eliminations) || value.eliminations.length > local.playerIds.length ||
+      !Array.isArray(value.players) || value.players.length !== local.playerIds.length)
+      fail("Invalid local round result.");
+    const alive = new Set(room.game.heads.filter(head => head.alive).map(head => head.ownerId));
+    const groups = value.eliminations.map(group => {
+      if (!Array.isArray(group) || !group.length || alive.size <= 1)
+        fail("Invalid local eliminations.");
+      return group.map(id => {
+        const playerId = identifier(id);
+        if (!alive.delete(playerId)) fail("Invalid local eliminations.");
+        return playerId;
+      });
+    });
+    if (alive.size > 1) fail("The local round has not finished.");
+    const seen = new Set<string>();
+    const results = value.players.map(result => {
+      if (!record(result)) fail("Invalid local player result.");
+      const id = identifier(result.id);
+      const player = room.game.players.find(player => player.id === id);
+      if (!local.playerIds.includes(id) || seen.has(id) || !player)
+        fail("Invalid local player result.");
+      seen.add(id);
+      if (!Number.isSafeInteger(result.charges) || (result.charges as number) < 0 ||
+        (result.charges as number) > player.charges + (value.tick as number) * MAX_HEADS_PER_PLAYER + 6)
+        fail("Invalid local power charges.");
+      const power = result.roundPower;
+      if (!POWERS.some(entry => entry === power) || power === "random" ||
+        (player.power !== "random" && power !== player.power))
+        fail("Invalid local round power.");
+      return { id, charges: result.charges as number, roundPower: power as Power };
+    });
+    // shortcut: local outcomes trust their owner; replay inputs if competitive score verification is needed.
+    const queued = room.game.players.filter(player => !local.playerIds.includes(player.id));
+    room.game.players = room.game.players.filter(player => local.playerIds.includes(player.id));
+    for (const result of results)
+      room.game.players.find(player => player.id === result.id)!.roundPower = result.roundPower;
+    room.game.phase = "playing";
+    for (const group of groups) room.game.eliminate(group);
+    for (const result of results)
+      room.game.players.find(player => player.id === result.id)!.charges = result.charges;
+    room.game.players.push(...queued);
+    room.game.tick = value.tick as number;
+    local.completed = true;
   }
   function handle(socket: WebSocket, value: unknown) {
     if (!record(value) || typeof value.type !== "string")
@@ -478,6 +556,7 @@ export function createGameServer({
             fail("You can only steer players on your own device.");
           return { id, turn: input.turn as Turn, power: input.power === true };
         });
+        if (room.localRound) break;
         if (
           value.seq !== undefined &&
           (value.seq as number) <= session.inputSeq
@@ -519,19 +598,22 @@ export function createGameServer({
         if (room.game.phase !== "lobby" && room.game.phase !== "finished")
           fail("The match has already started.");
         room.game.start();
+        selectRoundMode(room, value.local);
         broadcastRoom(room);
-        broadcastFrame(room);
+        if (!room.localRound) broadcastFrame(room);
         break;
       case "next":
         requireHost(session);
         if (room.game.phase !== "roundEnd")
           fail("Wait for the round to finish.");
         room.game.startRound();
+        selectRoundMode(room, value.local);
         broadcastRoom(room);
-        broadcastFrame(room);
+        if (!room.localRound) broadcastFrame(room);
         break;
       case "countdown":
         requireHost(session);
+        if (room.localRound) fail("The local device starts its own countdown.");
         if (room.game.phase !== "ready")
           fail("Wait for players to get ready.");
         room.game.beginCountdown();
@@ -540,14 +622,32 @@ export function createGameServer({
         break;
       case "lobby":
         requireHost(session);
+        room.localRound = undefined;
         room.game.lobby();
         broadcastRoom(room);
         break;
       case "pause":
         requireHost(session);
+        if (room.localRound) fail("The local device manages its own pause.");
         room.game.pause();
         broadcastRoom(room);
         broadcastFrame(room);
+        break;
+      case "localState": {
+        localOwner(session, value.round);
+        if (room.localRound!.completed) break;
+        if (value.phase !== "countdown" && value.phase !== "playing" && value.phase !== "paused")
+          fail("Invalid local round phase.");
+        if (room.game.phase !== value.phase) {
+          room.game.phase = value.phase;
+          broadcastRoom(room);
+        }
+        break;
+      }
+      case "localEnd":
+        localOwner(session, value.round);
+        completeLocalRound(room, value);
+        broadcastRoom(room);
         break;
       default:
         fail("Unknown message.");
@@ -614,7 +714,8 @@ export function createGameServer({
       room.game.stopInputs(device.playerIds);
       for (const player of room.game.players)
         if (player.deviceId === session.deviceId) player.connected = false;
-      if (room.hostDeviceId === session.deviceId) {
+      if (room.hostDeviceId === session.deviceId && (!room.localRound || room.localRound.completed)) {
+        room.localRound = undefined;
         const connected = [...room.devices].find(
           ([id, entry]) => id !== session.deviceId && entry.socket,
         );
@@ -651,6 +752,7 @@ export function createGameServer({
   }
   function step() {
     for (const room of rooms.values()) {
+      if (room.localRound) continue;
       const phase = room.game.phase;
       const active = phase === "playing" || phase === "countdown";
       if (room.game.step()) broadcastRoom(room);
@@ -683,12 +785,17 @@ export function createGameServer({
             device.disconnectedAt !== undefined &&
             now - device.disconnectedAt > graceMs
           ) {
+            if (room.localRound?.deviceId === deviceId) cancelLocalRound(room);
             const changed = room.game.eliminate(device.playerIds);
             room.game.players = room.game.players.filter(
               (player) => player.deviceId !== deviceId,
             );
             prunePowerRules(room);
             room.devices.delete(deviceId);
+            if (room.hostDeviceId === deviceId) {
+              const host = [...room.devices].find(([, device]) => device.socket);
+              if (host) room.hostDeviceId = host[0];
+            }
             broadcastRoom(room);
             if (changed) broadcastFrame(room);
           }

@@ -19,7 +19,7 @@ Open **http://localhost:5173** on the host computer. The terminal prints the LAN
 4. The host clicks **Start game**, then **Start countdown** when everyone is ready. Space performs these actions too, pauses/resumes a running round, and prepares the next round after it ends.
 5. A projector browser can **Spectate** without using a player slot, then select **Projector view** and fullscreen.
 
-Phones and tablets have touch steering buttons. A keyboard's physical key rollover may limit how many simultaneous keys it detects; spreading players across more devices avoids that hardware limit.
+Phones automatically use a compact layout in portrait and landscape, with large touch controls for up to two local players. Selecting more shows a recommendation to use another device. Each control label shows the player's current ability, points, and rank across the room; equal scores share a rank, with gold, silver, and bronze for the top three places. Scores and room actions are collapsed under **Score & room**, while the host can still start, pause, and advance rounds beside the arena. A keyboard's physical key rollover may limit how many simultaneous keys it detects; spreading players across more devices avoids that hardware limit.
 
 If other devices cannot connect, check Windows Firewall permission for Node and ask the school's IT team whether Wi-Fi client isolation blocks direct connections. No router port forwarding is needed for LAN play.
 
@@ -46,9 +46,12 @@ No paid service or external account is required for LAN play. A public deploymen
 
 ## How the multiplayer works
 
-- The server simulates movement, collisions, gaps, powers, elimination, and scoring at **60 ticks per second**. Clients cannot submit positions or scores.
+- When one device owns all players and no other device is connected, rounds run in that browser at **60 ticks per second**, using the same engine as the server. Steering, collisions, powers, countdown and pause do not wait for network traffic. The connection carries presence and occasional phase/result updates.
+- A device joining a local round waits until the next round. The current round finishes locally, its scores and charges are carried over, and the next round runs on the server. A connected spectator also selects server play at the next round boundary. Room creation and preparing the next round still need the server.
+- Local rounds continue through brief network loss and report their result after reconnecting. The server reserves the host for the usual 30-second reconnect grace period; after that it returns waiting devices to the lobby. Reloading the local host restarts the unreported round, and restarting the server still clears its rooms.
+- With multiple devices, the server simulates movement, collisions, gaps, powers, elimination, and scoring at **60 ticks per second**. Clients cannot submit positions or scores. Local-only rounds report elimination order and charges; the server validates ownership, round identity and bounds, and computes the scores. These local outcomes trust their owner.
 - Browsers send steering changes immediately and repeat held inputs every 200 ms so a disconnected or hidden page cannot leave a turn stuck.
-- The server broadcasts heads and newly drawn trail segments at **20 updates per second**. The browser predicts local steering immediately, replays unacknowledged inputs, and corrects against authoritative updates. Remote heads move continuously between updates with a bounded prediction window. Only the server decides deaths and scores.
+- During server play, the server broadcasts heads and newly drawn trail segments at **20 updates per second**. The browser predicts local steering immediately, replays unacknowledged inputs, and corrects against authoritative updates. Remote heads move continuously between updates with a bounded prediction window. The server decides deaths and scores for these rounds.
 - Trails are accumulated once on a backing canvas sized for the display. New segments and Shoot holes erasures are processed in tick order; old trails are not repeatedly downloaded.
 - WebSocket frames negotiate fast level-1 compression for supported browsers; messages under 1 KB skip compression. A representative 50-player local benchmark reduced a 16.4 KB frame to about 2.5 KB (roughly 85% less traffic). Actual traffic depends on active heads and powers.
 - Every device gets at most six owned players. Inputs are checked against that device's roster; messages are validated and bounded.
@@ -77,10 +80,11 @@ Main files:
 - `src/GameCanvas.tsx`: frame rendering and persistent trails.
 - `src/prediction.ts`: immediate local input prediction and server reconciliation.
 - `shared/types.ts`: client/server protocol.
-- `server/game.ts`: authoritative game simulation.
+- `shared/game.ts`: game simulation shared by browser and server (`server/game.ts` keeps existing imports working).
+- `src/local-game.ts`: local round stepping and elimination results.
 - `server/app.ts`: room lifecycle and WebSocket handling.
 - `server/index.ts`: server entry point.
 
-Tests cover multiplayer powers, 50-player room limits and arena scaling, input ownership, reconnect behavior, host controls, and prediction under simulated network delay. Browser checks should also be performed after UI changes.
+Tests cover multiplayer powers, 50-player room limits and arena scaling, input ownership, reconnect behavior, host controls, local play and the round-boundary server handoff, and prediction under simulated network delay. Browser checks should also be performed after UI changes.
 
 See [the 10 October deep review](docs/deep-review-2026-10-10.md) for the latest fixes, 100-test result, stress measurements, public-site observations, and verification limits.

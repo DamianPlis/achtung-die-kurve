@@ -154,7 +154,7 @@ export default function GameCanvas({
         context!.drawImage(trail, 0, 0);
         context!.setTransform(scale, 0, 0, scale, 0, 0);
         const playing =
-          frame.phase === "playing" && currentRoom.phase === "playing";
+          frame.phase === "playing" && currentRoom.phase === "playing" && !currentRoom.localRound;
         const newFrame = receivedAt !== frame.receivedAt;
         for (const head of frame.heads) {
           const player = players.get(head.ownerId);

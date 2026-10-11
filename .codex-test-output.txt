@@ -1,0 +1,754 @@
+
+> kurve-classroom@1.0.0 test
+> tsx --test tests/*.test.ts
+
+TAP version 13
+# Subtest: public game backends accept HTTP(S) origins and reject credentials or URL paths
+ok 1 - public game backends accept HTTP(S) origins and reject credentials or URL paths
+  ---
+  duration_ms: 31.9102
+  type: 'test'
+  ...
+# Subtest: map size defaults to recommended and is included when creating a room
+ok 2 - map size defaults to recommended and is included when creating a room
+  ---
+  duration_ms: 19.8843
+  type: 'test'
+  ...
+# Subtest: lobby hosts update map size and guests cannot select it
+ok 3 - lobby hosts update map size and guests cannot select it
+  ---
+  duration_ms: 10.7329
+  type: 'test'
+  ...
+# Subtest: lobby map options show scaled dimensions for connected players and update with the roster
+ok 4 - lobby map options show scaled dimensions for connected players and update with the roster
+  ---
+  duration_ms: 16.7905
+  type: 'test'
+  ...
+# Subtest: custom map slider sends its scale and displays the resulting 50-player dimensions
+ok 5 - custom map slider sends its scale and displays the resulting 50-player dimensions
+  ---
+  duration_ms: 22.2136
+  type: 'test'
+  ...
+# Subtest: custom map selection and scale are included when creating a room
+ok 6 - custom map selection and scale are included when creating a room
+  ---
+  duration_ms: 5.0919
+  type: 'test'
+  ...
+# Subtest: keys consumed by lobby sliders do not enable players or cycle their powers
+ok 7 - keys consumed by lobby sliders do not enable players or cycle their powers
+  ---
+  duration_ms: 3.4185
+  type: 'test'
+  ...
+# Subtest: ready hosts can begin countdown by touch or keyboard, including projector mode
+ok 8 - ready hosts can begin countdown by touch or keyboard, including projector mode
+  ---
+  duration_ms: 3.9098
+  type: 'test'
+  ...
+# Subtest: spectators see ready instructions without a host countdown action
+ok 9 - spectators see ready instructions without a host countdown action
+  ---
+  duration_ms: 2.7454
+  type: 'test'
+  ...
+# Subtest: keyboard opposite directions cancel, blur releases all inputs, power is sent
+ok 10 - keyboard opposite directions cancel, blur releases all inputs, power is sent
+  ---
+  duration_ms: 3.1559
+  type: 'test'
+  ...
+# Subtest: Y and Z steer interchangeably and release independently with either saved binding
+ok 11 - Y and Z steer interchangeably and release independently with either saved binding
+  ---
+  duration_ms: 5.6344
+  type: 'test'
+  ...
+# Subtest: both Y and Z enable the default player and activate a rebound power
+ok 12 - both Y and Z enable the default player and activate a rebound power
+  ---
+  duration_ms: 12.4713
+  type: 'test'
+  ...
+# Subtest: pause clears held controls and resume waits for fresh input
+ok 13 - pause clears held controls and resume waits for fresh input
+  ---
+  duration_ms: 2.4669
+  type: 'test'
+  ...
+# Subtest: releasing one touch pointer preserves the other held pointer
+ok 14 - releasing one touch pointer preserves the other held pointer
+  ---
+  duration_ms: 2.9387
+  type: 'test'
+  ...
+# Subtest: power touch pointers release independently and capture loss clears held inputs
+ok 15 - power touch pointers release independently and capture loss clears held inputs
+  ---
+  duration_ms: 3.0567
+  type: 'test'
+  ...
+# Subtest: entering projector mode releases touch controls before removing their buttons
+ok 16 - entering projector mode releases touch controls before removing their buttons
+  ---
+  duration_ms: 3.2649
+  type: 'test'
+  ...
+# Subtest: compact screens expose only two owned touch players while desktop keeps all
+ok 17 - compact screens expose only two owned touch players while desktop keeps all
+  ---
+  duration_ms: 4.8794
+  type: 'test'
+  ...
+# Subtest: phone touch controls ignore remote players and warn only when a third local slot is enabled
+ok 18 - phone touch controls ignore remote players and warn only when a third local slot is enabled
+  ---
+  duration_ms: 12.4859
+  type: 'test'
+  ...
+# Subtest: score and room details default collapsed on compact screens and expanded on desktop
+ok 19 - score and room details default collapsed on compact screens and expanded on desktop
+  ---
+  duration_ms: 7.9219
+  type: 'test'
+  ...
+# Subtest: switching to compact layout releases held steering and power for hidden local players
+ok 20 - switching to compact layout releases held steering and power for hidden local players
+  ---
+  duration_ms: 3.4167
+  type: 'test'
+  ...
+# Subtest: resizing a compact screen releases both players' held steering and power
+ok 21 - resizing a compact screen releases both players' held steering and power
+  ---
+  duration_ms: 4.0949
+  type: 'test'
+  ...
+# Subtest: compact touch labels show round power and score, including no power and zero points
+ok 22 - compact touch labels show round power and score, including no power and zero points
+  ---
+  duration_ms: 2.7133
+  type: 'test'
+  ...
+# Subtest: compact touch ranks include remote players, share ties, and update with room scores
+ok 23 - compact touch ranks include remote players, share ties, and update with room scores
+  ---
+  duration_ms: 3.6322
+  type: 'test'
+  ...
+# Subtest: desktop touch labels omit compact stats
+ok 24 - desktop touch labels omit compact stats
+  ---
+  duration_ms: 2.4579
+  type: 'test'
+  ...
+# Subtest: rejected roster updates restore authoritative enabled slots and saved preferences
+ok 25 - rejected roster updates restore authoritative enabled slots and saved preferences
+  ---
+  duration_ms: 3.4819
+  type: 'test'
+  ...
+# Subtest: overlapping roster edits reconcile the final reply without rolling back newer edits
+ok 26 - overlapping roster edits reconcile the final reply without rolling back newer edits
+  ---
+  duration_ms: 11.3913
+  type: 'test'
+  ...
+# Subtest: rapid per-player rule edits preserve earlier pending changes and intermediate replies
+ok 27 - rapid per-player rule edits preserve earlier pending changes and intermediate replies
+  ---
+  duration_ms: 8.9772
+  type: 'test'
+  ...
+# Subtest: an older rules rejection cannot discard a newer pending preset or subsequent edit
+ok 28 - an older rules rejection cannot discard a newer pending preset or subsequent edit
+  ---
+  duration_ms: 10.3967
+  type: 'test'
+  ...
+# Subtest: A to B to A rule edits retain the final draft through intermediate matching acknowledgements
+ok 29 - A to B to A rule edits retain the final draft through intermediate matching acknowledgements
+  ---
+  duration_ms: 11.7081
+  type: 'test'
+  ...
+# Subtest: supported prototype-named player IDs retain explicit power overrides
+ok 30 - supported prototype-named player IDs retain explicit power overrides
+  ---
+  duration_ms: 12.9671
+  type: 'test'
+  ...
+# Subtest: only a rejected rules request rolls back pending power rules
+ok 31 - only a rejected rules request rolls back pending power rules
+  ---
+  duration_ms: 10.7123
+  type: 'test'
+  ...
+# Subtest: malformed saved keys, duplicate identifiers/keys and unsupported powers recover safely
+ok 32 - malformed saved keys, duplicate identifiers/keys and unsupported powers recover safely
+  ---
+  duration_ms: 23.4686
+  type: 'test'
+  ...
+# Subtest: a reconnect snapshot recovers owned controls after corrupt preferences were discarded
+ok 33 - a reconnect snapshot recovers owned controls after corrupt preferences were discarded
+  ---
+  duration_ms: 3.0474
+  type: 'test'
+  ...
+# Subtest: rebinding rejects reserved and duplicate keys, then uses a valid new key
+ok 34 - rebinding rejects reserved and duplicate keys, then uses a valid new key
+  ---
+  duration_ms: 33.4086
+  type: 'test'
+  ...
+# Subtest: a replaced tab stops automatic retries and offers an explicit reconnect action
+ok 35 - a replaced tab stops automatic retries and offers an explicit reconnect action
+  ---
+  duration_ms: 3.1474
+  type: 'test'
+  ...
+# Subtest: ordinary network loss still retries and re-enters the room
+ok 36 - ordinary network loss still retries and re-enters the room
+  ---
+  duration_ms: 3.3087
+  type: 'test'
+  ...
+# Subtest: an expired seat returns to join setup with the old code and a spectator action
+ok 37 - an expired seat returns to join setup with the old code and a spectator action
+  ---
+  duration_ms: 4.8525
+  type: 'test'
+  ...
+# Subtest: the WebSocket uses the page origin by default or the configured shared server
+ok 38 - the WebSocket uses the page origin by default or the configured shared server
+  ---
+  duration_ms: 50.4993
+  type: 'test'
+  ...
+# Subtest: snapshot colors are discarded on a new round or changed trail revision
+ok 39 - snapshot colors are discarded on a new round or changed trail revision
+  ---
+  duration_ms: 3.4777
+  type: 'test'
+  ...
+# Subtest: reconnect and reload normalize blank draft player names
+ok 40 - reconnect and reload normalize blank draft player names
+  ---
+  duration_ms: 11.8736
+  type: 'test'
+  ...
+# Subtest: a new invite takes precedence over saved recovery and accepted rooms still reconnect
+ok 41 - a new invite takes precedence over saved recovery and accepted rooms still reconnect
+  ---
+  duration_ms: 6.9271
+  type: 'test'
+  ...
+# Subtest: pending full-room roster edits preserve accepted seats through disconnect and reload
+ok 42 - pending full-room roster edits preserve accepted seats through disconnect and reload
+  ---
+  duration_ms: 14.665
+  type: 'test'
+  ...
+# Subtest: an intermediate roster acceptance is retained while a newer edit is pending
+ok 43 - an intermediate roster acceptance is retained while a newer edit is pending
+  ---
+  duration_ms: 11.0924
+  type: 'test'
+  ...
+# Subtest: a confirmed empty host reconnects as an observer and can add lobby players again
+ok 44 - a confirmed empty host reconnects as an observer and can add lobby players again
+  ---
+  duration_ms: 3.2955
+  type: 'test'
+  ...
+# Subtest: reload with no selected seats automatically observes an active room after join refusal
+ok 45 - reload with no selected seats automatically observes an active room after join refusal
+  ---
+  duration_ms: 16.6448
+  type: 'test'
+  ...
+# Subtest: single-device rounds use local frames, immediate controls and pause without network input
+ok 46 - single-device rounds use local frames, immediate controls and pause without network input
+  ---
+  duration_ms: 33.3394
+  type: 'test'
+  ...
+# Subtest: a local round continues through a disconnect and reports its result after reconnecting
+ok 47 - a local round continues through a disconnect and reports its result after reconnecting
+  ---
+  duration_ms: 9.8806
+  type: 'test'
+  ...
+# Subtest: remote arrivals wait until the local round ends, then the next round uses server frames
+ok 48 - remote arrivals wait until the local round ends, then the next round uses server frames
+  ---
+  duration_ms: 9.3764
+  type: 'test'
+  ...
+# Subtest: resize preserves departed players' trail colors and erased-trail ordering
+ok 49 - resize preserves departed players' trail colors and erased-trail ordering
+  ---
+  duration_ms: 5.7894
+  type: 'test'
+  ...
+# Subtest: Dark knight still records drawing while hiding it, then reveals retained trails
+ok 50 - Dark knight still records drawing while hiding it, then reveals retained trails
+  ---
+  duration_ms: 1.6971
+  type: 'test'
+  ...
+# Subtest: late snapshots preserve departed owners' colors without rendering absent-owner heads
+ok 51 - late snapshots preserve departed owners' colors without rendering absent-owner heads
+  ---
+  duration_ms: 1.8836
+  type: 'test'
+  ...
+# Subtest: six keyboard players have unique controls and opposite inputs cancel
+ok 52 - six keyboard players have unique controls and opposite inputs cancel
+  ---
+  duration_ms: 2.926
+  type: 'test'
+  ...
+# Subtest: Y and Z share a control and label on QWERTY and QWERTZ keyboards
+ok 53 - Y and Z share a control and label on QWERTY and QWERTZ keyboards
+  ---
+  duration_ms: 0.2966
+  type: 'test'
+  ...
+# Subtest: Game.fromRoom preserves the match and starts the same numbered round on fixed dimensions
+ok 54 - Game.fromRoom preserves the match and starts the same numbered round on fixed dimensions
+  ---
+  duration_ms: 4.2552
+  type: 'test'
+  ...
+# Subtest: LocalRound steps controls locally and only records owners eliminated in each step
+ok 55 - LocalRound steps controls locally and only records owners eliminated in each step
+  ---
+  duration_ms: 5.0855
+  type: 'test'
+  ...
+# Subtest: LocalRound does not advance ready or completed phases
+ok 56 - LocalRound does not advance ready or completed phases
+  ---
+  duration_ms: 2.3955
+  type: 'test'
+  ...
+# Subtest: local steering replays immediately while unacknowledged and only on its owner
+ok 57 - local steering replays immediately while unacknowledged and only on its owner
+  ---
+  duration_ms: 2.98
+  type: 'test'
+  ...
+# Subtest: replay preserves press and release times instead of extending the latest turn over the frame
+ok 58 - replay preserves press and release times instead of extending the latest turn over the frame
+  ---
+  duration_ms: 0.4441
+  type: 'test'
+  ...
+# Subtest: prediction uses the same 60 Hz movement step as the server
+ok 59 - prediction uses the same 60 Hz movement step as the server
+  ---
+  duration_ms: 0.3452
+  type: 'test'
+  ...
+# Subtest: missing updates stop motion after 150 ms; pause and death never extrapolate
+ok 60 - missing updates stop motion after 150 ms; pause and death never extrapolate
+  ---
+  duration_ms: 0.4166
+  type: 'test'
+  ...
+# Subtest: square turn prediction applies one right-angle edge and wraps without crossing the map
+ok 61 - square turn prediction applies one right-angle edge and wraps without crossing the map
+  ---
+  duration_ms: 0.4069
+  type: 'test'
+  ...
+# Subtest: small corrections smooth briefly, while powers, death and large corrections snap
+ok 62 - small corrections smooth briefly, while powers, death and large corrections snap
+  ---
+  duration_ms: 0.3905
+  type: 'test'
+  ...
+# Subtest: 20 Hz updates render steady motion with synthetic 15 ms RTT and packet jitter
+ok 63 - 20 Hz updates render steady motion with synthetic 15 ms RTT and packet jitter
+  ---
+  duration_ms: 1.0215
+  type: 'test'
+  ...
+# Subtest: 20 Hz updates render steady motion with synthetic 30 ms RTT and packet jitter
+ok 64 - 20 Hz updates render steady motion with synthetic 30 ms RTT and packet jitter
+  ---
+  duration_ms: 3.3131
+  type: 'test'
+  ...
+# Subtest: snapshot and repeated pending frames preserve erased trails and accept later drawing
+ok 65 - snapshot and repeated pending frames preserve erased trails and accept later drawing
+  ---
+  duration_ms: 0.7869
+  type: 'test'
+  ...
+# Subtest: map presets set the arena size and retain scaling for larger rosters
+ok 66 - map presets set the arena size and retain scaling for larger rosters
+  ---
+  duration_ms: 56.8689
+  type: 'test'
+  ...
+# Subtest: custom map percentages scale Recommended and keep collision-grid edges aligned
+ok 67 - custom map percentages scale Recommended and keep collision-grid edges aligned
+  ---
+  duration_ms: 0.6749
+  type: 'test'
+  ...
+# Subtest: custom arenas count connected players and stay fixed until the next match
+ok 68 - custom arenas count connected players and stay fixed until the next match
+  ---
+  duration_ms: 45.0917
+  type: 'test'
+  ...
+# Subtest: classic countdown, movement, and steering run on fixed simulation ticks
+ok 69 - classic countdown, movement, and steering run on fixed simulation ticks
+  ---
+  duration_ms: 5.2923
+  type: 'test'
+  ...
+# Subtest: wall elimination awards every survivor, and first to target wins
+ok 70 - wall elimination awards every survivor, and first to target wins
+  ---
+  duration_ms: 2.3279
+  type: 'test'
+  ...
+# Subtest: trail occupancy detects another trail but permits the recent own trail
+ok 71 - trail occupancy detects another trail but permits the recent own trail
+  ---
+  duration_ms: 3.0697
+  type: 'test'
+  ...
+# Subtest: same-tick head collision eliminates both without awarding either a point
+ok 72 - same-tick head collision eliminates both without awarding either a point
+  ---
+  duration_ms: 2.4406
+  type: 'test'
+  ...
+# Subtest: jump spends one charge and crosses a trail without drawing the jump
+ok 73 - jump spends one charge and crosses a trail without drawing the jump
+  ---
+  duration_ms: 2.0847
+  type: 'test'
+  ...
+# Subtest: boost and shield have bounded server-side duration and recharge after rounds
+ok 74 - boost and shield have bounded server-side duration and recharge after rounds
+  ---
+  duration_ms: 4.5086
+  type: 'test'
+  ...
+# Subtest: next round resets trails and positions; lobby clears match state
+ok 75 - next round resets trails and positions; lobby clears match state
+  ---
+  duration_ms: 3.3982
+  type: 'test'
+  ...
+# Subtest: natural eight-tick gaps stay wide enough to cross and restore a power charge
+ok 76 - natural eight-tick gaps stay wide enough to cross and restore a power charge
+  ---
+  duration_ms: 5.3917
+  type: 'test'
+  ...
+# Subtest: every original power is server-owned, and instant abilities require release
+ok 77 - every original power is server-owned, and instant abilities require release
+  ---
+  duration_ms: 2.4669
+  type: 'test'
+  ...
+# Subtest: boost doubles steering, square turns once per edge, and expiry restores ordinary steering
+ok 78 - boost doubles steering, square turns once per edge, and expiry restores ordinary steering
+  ---
+  duration_ms: 2.2264
+  type: 'test'
+  ...
+# Subtest: invisible bypasses trails and borders only for its timed duration
+ok 79 - invisible bypasses trails and borders only for its timed duration
+  ---
+  duration_ms: 2.3849
+  type: 'test'
+  ...
+# Subtest: invisible movement does not create an invisible trail of power pickups
+ok 80 - invisible movement does not create an invisible trail of power pickups
+  ---
+  duration_ms: 2.317
+  type: 'test'
+  ...
+# Subtest: cross walls spends the last charge once and cannot wrap a second time
+ok 81 - cross walls spends the last charge once and cannot wrap a second time
+  ---
+  duration_ms: 1.7817
+  type: 'test'
+  ...
+# Subtest: Hydra steers all owned heads and scores only when the final head dies
+ok 82 - Hydra steers all owned heads and scores only when the final head dies
+  ---
+  duration_ms: 2.5273
+  type: 'test'
+  ...
+# Subtest: Hydra limits stop exponential replication without spending a charge
+ok 83 - Hydra limits stop exponential replication without spending a charge
+  ---
+  duration_ms: 1.4753
+  type: 'test'
+  ...
+# Subtest: Hydra cannot create more than the room-wide live head budget
+ok 84 - Hydra cannot create more than the room-wide live head budget
+  ---
+  duration_ms: 20.7419
+  type: 'test'
+  ...
+# Subtest: reverse swaps active ends with a discontinuity and temporary own-trail immunity
+ok 85 - reverse swaps active ends with a discontinuity and temporary own-trail immunity
+  ---
+  duration_ms: 2.1601
+  type: 'test'
+  ...
+# Subtest: shoot holes erases authoritative trail cells and preserves drawing chronology
+ok 86 - shoot holes erases authoritative trail cells and preserves drawing chronology
+  ---
+  duration_ms: 3.0337
+  type: 'test'
+  ...
+# Subtest: draw event order distinguishes a hole and a new bar in the same simulation tick
+ok 87 - draw event order distinguishes a hole and a new bar in the same simulation tick
+  ---
+  duration_ms: 5.903
+  type: 'test'
+  ...
+# Subtest: round results clear the global blackout and timed effects
+ok 88 - round results clear the global blackout and timed effects
+  ---
+  duration_ms: 1.976
+  type: 'test'
+  ...
+# Subtest: random resolves once per round, no-power choices do not gain charges, and arena stays fixed
+ok 89 - random resolves once per round, no-power choices do not gain charges, and arena stays fixed
+  ---
+  duration_ms: 25.2512
+  type: 'test'
+  ...
+# Subtest: an unattended round ends normally within thirty seconds and awards points
+ok 90 - an unattended round ends normally within thirty seconds and awards points
+  ---
+  duration_ms: 19.0718
+  type: 'test'
+  ...
+# Subtest: pause freezes countdown, movement and power duration until the host resumes
+ok 91 - pause freezes countdown, movement and power duration until the host resumes
+  ---
+  duration_ms: 2.7407
+  type: 'test'
+  ...
+# Subtest: paused input cannot turn a square head or change its discontinuity revision
+ok 92 - paused input cannot turn a square head or change its discontinuity revision
+  ---
+  duration_ms: 3.6266
+  type: 'test'
+  ...
+# Subtest: players reaching the target together enter a deathmatch excluding other players
+ok 93 - players reaching the target together enter a deathmatch excluding other players
+  ---
+  duration_ms: 2.1735
+  type: 'test'
+  ...
+# Subtest: Hydra splits survive past immunity at every game speed
+ok 94 - Hydra splits survive past immunity at every game speed
+  ---
+  duration_ms: 9.5689
+  type: 'test'
+  ...
+# Subtest: rapid Hydra splits retain four heads after immunity at every speed
+ok 95 - rapid Hydra splits retain four heads after immunity at every speed
+  ---
+  duration_ms: 37.7177
+  type: 'test'
+  ...
+# Subtest: four rapid Hydra uses preserve sixteen separate trails through 600 ticks
+ok 96 - four rapid Hydra uses preserve sixteen separate trails through 600 ticks
+  ---
+  duration_ms: 124.5725
+  type: 'test'
+  ...
+# Subtest: Hydra preserves uneven families after one branch hits a wall
+ok 97 - Hydra preserves uneven families after one branch hits a wall
+  ---
+  duration_ms: 13.4091
+  type: 'test'
+  ...
+# Subtest: Hydra keeps narrow surviving families separate after other branches hit walls
+ok 98 - Hydra keeps narrow surviving families separate after other branches hit walls
+  ---
+  duration_ms: 80.6764
+  type: 'test'
+  ...
+# Subtest: Hydra rejects effectively parallel directions without spending a charge
+ok 99 - Hydra rejects effectively parallel directions without spending a charge
+  ---
+  duration_ms: 1.6667
+  type: 'test'
+  ...
+# Subtest: Hydra trail ownership retains indices beyond the sixteen-bit boundary
+ok 100 - Hydra trail ownership retains indices beyond the sixteen-bit boundary
+  ---
+  duration_ms: 4.77
+  type: 'test'
+  ...
+# Subtest: Hydra refuses exhausted trail indices without spending a charge
+ok 101 - Hydra refuses exhausted trail indices without spending a charge
+  ---
+  duration_ms: 2.3474
+  type: 'test'
+  ...
+# Subtest: boosted head collisions include paths between ticks, preserving near misses and invisible heads
+ok 102 - boosted head collisions include paths between ticks, preserving near misses and invisible heads
+  ---
+  duration_ms: 13.5508
+  type: 'test'
+  ...
+# Subtest: jump, reverse and wall wrapping skip teleport paths but collide at landings
+ok 103 - jump, reverse and wall wrapping skip teleport paths but collide at landings
+  ---
+  duration_ms: 12.7575
+  type: 'test'
+  ...
+# Subtest: Hydra trails merge per head and snapshots include pending trails without draining them
+ok 104 - Hydra trails merge per head and snapshots include pending trails without draining them
+  ---
+  duration_ms: 5.0011
+  type: 'test'
+  ...
+# Subtest: a deathmatch finishes without a champion when every finalist disconnects
+ok 105 - a deathmatch finishes without a champion when every finalist disconnects
+  ---
+  duration_ms: 4.9979
+  type: 'test'
+  ...
+# Subtest: Hydra prunes dead siblings while preserving their trails, immunity and final death marker
+ok 106 - Hydra prunes dead siblings while preserving their trails, immunity and final death marker
+  ---
+  duration_ms: 3.3763
+  type: 'test'
+  ...
+# Subtest: 50 Hydra players with earned charges keep dead markers and published heads bounded
+ok 107 - 50 Hydra players with earned charges keep dead markers and published heads bounded
+  ---
+  duration_ms: 1079.2963
+  type: 'test'
+  ...
+# Subtest: round trail colors retain departed owners and Chuck white until trails reset
+ok 108 - round trail colors retain departed owners and Chuck white until trails reset
+  ---
+  duration_ms: 3.4149
+  type: 'test'
+  ...
+# Subtest: local rounds freeze the server, queue late players, and hand the next round to the server
+ok 109 - local rounds freeze the server, queue late players, and hand the next round to the server
+  ---
+  duration_ms: 134.2935
+  type: 'test'
+  ...
+# Subtest: a connected spectator selects server simulation even when local was requested
+ok 110 - a connected spectator selects server simulation even when local was requested
+  ---
+  duration_ms: 31.7232
+  type: 'test'
+  ...
+# Subtest: the local owner keeps its lock through reconnect and grace expiry cancels the round
+ok 111 - the local owner keeps its lock through reconnect and grace expiry cancels the round
+  ---
+  duration_ms: 163.0406
+  type: 'test'
+  ...
+# Subtest: map size settings are validated, shared, and restricted to the host in the lobby
+ok 112 - map size settings are validated, shared, and restricted to the host in the lobby
+  ---
+  duration_ms: 121.4799
+  type: 'test'
+  ...
+# Subtest: three six-player devices share one authoritative match, with spectators and ownership checks
+ok 113 - three six-player devices share one authoritative match, with spectators and ownership checks
+  ---
+  duration_ms: 746.8214
+  type: 'test'
+  ...
+# Subtest: packet floods and oversized messages close connections without affecting the server
+ok 114 - packet floods and oversized messages close connections without affecting the server
+  ---
+  duration_ms: 133.9397
+  type: 'test'
+  ...
+# Subtest: an oversized frame from a rejected connection cannot crash a full server
+ok 115 - an oversized frame from a rejected connection cannot crash a full server
+  ---
+  duration_ms: 547.6021
+  type: 'test'
+  ...
+# Subtest: fifty players on nine devices share powers, map size, holes and private monotonic acknowledgments
+ok 116 - fifty players on nine devices share powers, map size, holes and private monotonic acknowledgments
+  ---
+  duration_ms: 1292.1089
+  type: 'test'
+  ...
+# Subtest: retained colors stay unique and rejected reconnects preserve the existing session
+ok 117 - retained colors stay unique and rejected reconnects preserve the existing session
+  ---
+  duration_ms: 27.94
+  type: 'test'
+  ...
+# Subtest: rejoining as spectator releases previous players in the lobby and during a match
+ok 118 - rejoining as spectator releases previous players in the lobby and during a match
+  ---
+  duration_ms: 47.3794
+  type: 'test'
+  ...
+# Subtest: grace expiry removes forced-power rules before the host edits another player
+ok 119 - grace expiry removes forced-power rules before the host edits another player
+  ---
+  duration_ms: 69.2869
+  type: 'test'
+  ...
+# Subtest: large compressed initial snapshots preserve later frames and stay connected
+ok 120 - large compressed initial snapshots preserve later frames and stay connected
+  ---
+  duration_ms: 172.2052
+  type: 'test'
+  ...
+# (node:42652) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: a stalled initial snapshot is terminated after the send deadline
+ok 121 - a stalled initial snapshot is terminated after the send deadline
+  ---
+  duration_ms: 19.5618
+  type: 'test'
+  ...
+# Subtest: fifty independent player sockets and a spectator share an active match with every power
+ok 122 - fifty independent player sockets and a spectator share an active match with every power
+  ---
+  duration_ms: 2707.9125
+  type: 'test'
+  ...
+# Subtest: roster limits, settings, malformed payloads, reconnect expiry, and HTTP health are bounded
+ok 123 - roster limits, settings, malformed payloads, reconnect expiry, and HTTP health are bounded
+  ---
+  duration_ms: 133.1333
+  type: 'test'
+  ...
+1..123
+# tests 123
+# suites 0
+# pass 123
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7254.6802

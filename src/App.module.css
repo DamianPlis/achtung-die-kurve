@@ -92,6 +92,11 @@
 .main {
   width: 100%;
 }
+.mobileHint,
+.mobileWarning,
+.gameMenuSummary {
+  display: none;
+}
 .layout {
   display: grid;
   grid-template-columns: 1fr;
@@ -686,6 +691,26 @@
   padding: 7px;
   font-size: 13px;
 }
+.touchStats {
+  color: #ccc;
+  font-size: 12px;
+}
+.touchStats > span {
+  display: inline-block;
+  white-space: nowrap;
+}
+.playerRank {
+  color: #eee;
+}
+.playerRank[data-rank="1"] {
+  color: #f0ce86;
+}
+.playerRank[data-rank="2"] {
+  color: #d5d9e0;
+}
+.playerRank[data-rank="3"] {
+  color: #d9a177;
+}
 .touchButton {
   display: flex;
   flex-direction: column;
@@ -715,10 +740,6 @@
 }
 .projector .gameLayout {
   display: block;
-}
-.projector .gameLayout.projectorReady {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
 }
 .projector .arenaPanel {
   width: min(100%, calc((100dvh - 105px) * 1.5));
@@ -778,37 +799,6 @@
   .tableFooter {
     flex-wrap: wrap;
   }
-  .main:has(.gameLayout) {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .gameLayout,
-  .projector .gameLayout,
-  .projector .gameLayout.projectorReady {
-    display: contents;
-  }
-  .touchControls {
-    order: 1;
-    margin-top: 0;
-  }
-  .scoreboard {
-    order: 2;
-  }
-  .arenaPanel,
-  .scoreboard {
-    width: 100%;
-  }
-  .scoreboard > div:nth-child(2) {
-    display: flex;
-    flex-wrap: wrap;
-  }
-  .scoreRow {
-    flex: 1 1 50%;
-  }
-  .projector .arenaPanel {
-    width: 100%;
-  }
 }
 @media (max-width: 420px) {
   .tableHeader > :first-child {
@@ -841,5 +831,209 @@
   }
   .power {
     font-size: 11px;
+  }
+}
+
+@media (max-width: 650px), (max-width: 950px) and (max-height: 500px) {
+  .mobileHint,
+  .mobileWarning {
+    display: block;
+    padding: 0 12px;
+    line-height: 1.5;
+  }
+  .mobileWarning {
+    color: #f0ce86;
+    font-size: 14px;
+  }
+  .keyboardHint,
+  .fullscreenButton,
+  .gameApp:not(.projector) .projectorButton,
+  .tableHeader > th:nth-child(n + 2):nth-child(-n + 4),
+  .playerRow > td:nth-child(n + 2):nth-child(-n + 4) {
+    display: none;
+  }
+  .tableHeader > :last-child {
+    width: 48%;
+  }
+  .tableHeader > th {
+    font-size: 13px;
+  }
+  .playerToggle {
+    width: 44px;
+    height: 44px;
+  }
+  .colorDot {
+    width: 24px;
+    height: 24px;
+    font-size: 14px;
+  }
+  .power,
+  .input,
+  .select {
+    font-size: 16px;
+  }
+  .gameApp {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100dvh;
+    margin: 0;
+    padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+      max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    overscroll-behavior: none;
+  }
+  .gameApp .header {
+    flex-shrink: 0;
+    min-height: 22px;
+    margin-bottom: 4px;
+  }
+  .gameApp .main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+  }
+  .gameLayout,
+  .projector .gameLayout {
+    display: contents;
+  }
+  .arenaPanel,
+  .projector .arenaPanel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+  }
+  .arenaHeader {
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+  .gameApp .button {
+    min-height: 44px;
+  }
+  .gameApp kbd {
+    display: none;
+  }
+  .canvasWrap {
+    flex: 1;
+    min-height: 0;
+    container-type: size;
+    background: #222;
+  }
+  .canvas {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(100cqw, calc(100cqh * var(--arena-ratio)));
+    height: auto;
+    transform: translate(-50%, -50%);
+    outline: 1px solid #555;
+  }
+  .readyPrompt {
+    flex-shrink: 0;
+    max-width: none;
+    padding: 6px;
+    text-align: center;
+  }
+  .readyPrompt .overlayTitle,
+  .readyPrompt:has(button) .overlayCopy {
+    display: none;
+  }
+  .touchControls {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    flex-shrink: 0;
+    order: 1;
+    gap: 8px;
+    margin: 0;
+  }
+  .touchPlayer {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    gap: 6px;
+    padding: 6px;
+  }
+  .touchPlayer:has(button:nth-of-type(3)) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .touchPlayerLabel {
+    grid-column: 1 / -1;
+    line-height: 1.35;
+  }
+  .touchName {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+  .touchButton {
+    min-width: 44px;
+    width: 100%;
+    height: 64px;
+    padding: 0;
+    font-size: 28px;
+    -webkit-touch-callout: none;
+  }
+  .scoreboard {
+    flex-shrink: 0;
+    order: 2;
+    width: 100%;
+    max-height: 35dvh;
+  }
+  .gameMenuSummary {
+    display: list-item;
+    min-height: 44px;
+    padding: 12px;
+    cursor: pointer;
+  }
+  .gameMenuSummary:focus-visible {
+    outline: 2px solid #ccc;
+    outline-offset: -2px;
+  }
+  .gameApp .error {
+    flex-shrink: 0;
+    order: 3;
+    max-height: 25dvh;
+    overflow-y: auto;
+    margin: 0;
+  }
+}
+
+@media (max-width: 950px) and (max-height: 500px) and (orientation: landscape) {
+  .gameApp .main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 180px;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .arenaPanel {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .main:not(:has(.touchControls)) .arenaPanel {
+    grid-column: 1 / -1;
+  }
+  .touchControls {
+    grid-column: 2;
+    grid-row: 1;
+    grid-auto-flow: row;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+  }
+  .touchButton {
+    height: 48px;
+  }
+  .scoreboard {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .gameApp .error {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
 }

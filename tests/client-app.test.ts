@@ -8,6 +8,7 @@ import { PLAYER_PALETTE } from "../shared/player-palette";
 import type { RoomView, ServerMessage } from "../shared/types";
 import { MAP_SIZES, POWERS } from "../shared/types";
 import * as mapSize from "../shared/map-size";
+import { LocalRound } from "../src/local-game";
 
 // Execute the actual App component and its callbacks with deterministic browser hooks.
 const source = readFileSync("src/App.tsx", "utf8");
@@ -31,12 +32,20 @@ function room(phase: RoomView["phase"] = "playing"): RoomView {
   };
 }
 
-function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serverOrigin?: string, search = "") {
+function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serverOrigin?: string, search = "", compact = false) {
   const states: any[] = [], refs: any[] = [], effects: any[] = [];
   let stateIndex = 0, refIndex = 0, effectIndex = 0;
   const listeners = new Map<string, (event?: any) => void>();
+  const mediaListeners = new Set<(event: { matches: boolean }) => void>();
+  const mediaQuery = {
+    get matches() { return compact; },
+    addEventListener: (_name: string, callback: (event: { matches: boolean }) => void) => mediaListeners.add(callback),
+    removeEventListener: (_name: string, callback: (event: { matches: boolean }) => void) => mediaListeners.delete(callback),
+  };
   const intervals: { callback: () => void; delay: number }[] = [];
   const timeouts: (() => void)[] = [];
+  const animations = new Map<number, (now: number) => void>();
+  let now = 1000, animationId = 0;
   const storage = new Map<string, string>([
     ["kurve-device", "local"], ["kurve-session-token", "s".repeat(32)],
   ]);
@@ -79,6 +88,7 @@ function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serv
       if (path === "react") return react;
       if (path === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "Fragment" };
       if (path === "./controls") return controls;
+      if (path === "./local-game") return { LocalRound };
       if (path === "../shared/types") return { MAP_SIZES, POWERS };
       if (path === "../shared/map-size") return mapSize;
       if (path === "../shared/player-palette") return { PLAYER_PALETTE };
@@ -90,8 +100,17 @@ function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serv
     sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) },
     location: { search, protocol: "http:", host: "localhost:3000", origin: "http://localhost:3000", pathname: "/", assign() {} },
     crypto: globalThis.crypto, WebSocket: MockSocket, HTMLInputElement: Input, HTMLSelectElement: Select,
-    URL, URLSearchParams, performance: { now: () => 1000 },
-    window: { addEventListener: (name: string, callback: any) => listeners.set(name, callback), removeEventListener: (name: string) => listeners.delete(name) },
+    URL, URLSearchParams, performance: { now: () => now },
+    requestAnimationFrame: (callback: (now: number) => void) => {
+      animations.set(++animationId, callback);
+      return animationId;
+    },
+    cancelAnimationFrame: (id: number) => animations.delete(id),
+    window: {
+      addEventListener: (name: string, callback: any) => listeners.set(name, callback),
+      removeEventListener: (name: string) => listeners.delete(name),
+      matchMedia: () => mediaQuery,
+    },
     document: { hidden: false, addEventListener: (name: string, callback: any) => listeners.set(name, callback), removeEventListener: (name: string) => listeners.delete(name) },
     setInterval: (callback: () => void, delay: number) => intervals.push({ callback, delay }), clearInterval() {},
     setTimeout: (callback: () => void) => timeouts.push(callback), clearTimeout() {},
@@ -111,6 +130,17 @@ function harness(initialRoom: RoomView | null = room(), savedSlots?: any[], serv
   tree = render();
   return {
     tree, states, storage, intervals, timeouts, listeners, sockets, render,
+    localRound: () => refs.find(ref => ref.current instanceof LocalRound)?.current as LocalRound | undefined,
+    advance(ms = 1000 / 60) {
+      now += ms;
+      const callbacks = [...animations.values()];
+      animations.clear();
+      callbacks.forEach(callback => callback(now));
+    },
+    setCompact(matches: boolean) {
+      compact = matches;
+      for (const listener of mediaListeners) listener({ matches });
+    },
     message(message: ServerMessage) { sockets.at(-1)!.onmessage?.({ data: JSON.stringify(message) }); },
     key(code: string, down = true, target: any = {}, defaultPrevented = false) { listeners.get(down ? "keydown" : "keyup")?.({ code, target, defaultPrevented, repeat: false, preventDefault() {} }); },
   };
@@ -158,7 +188,7 @@ test("lobby map options show scaled dimensions for connected players and update 
   view.players = Array.from({ length: 50 }, (_, index) => ({ ...view.players[0], id: `p${index}` }));
   const app = harness(view);
   const select = elements(app.tree).find(e => e.props.id === "map-size")!;
-  assert.match(text(select), /Classic.*3466.*2310/);
+  assert.match(text(select), /Small.*3466.*2310/);
   assert.match(text(select), /Recommended.*4158.*2772/);
   assert.match(text(select), /Large.*5198.*3466/);
   view.players.slice(6).forEach(player => { player.connected = false; });
@@ -327,6 +357,106 @@ test("entering projector mode releases touch controls before removing their butt
   elements(app.tree).find(e => e.props["aria-label"] === "one turn left")!.props.onPointerDown({ pointerId: 1, currentTarget: { setPointerCapture() {} } });
   elements(app.tree).find(e => text(e) === "Projector view")!.props.onClick();
   assert.equal(app.sockets[0].sent.at(-1).inputs[0].turn, 0);
+});
+
+test("compact screens expose only two owned touch players while desktop keeps all", () => {
+  const view = room();
+  view.players.push({ ...view.players[0], id: "player2", name: "three" });
+  const phone = harness(view, undefined, undefined, "", true);
+  assert.deepEqual(elements(phone.tree).filter(e => e.props["aria-label"] === "Touch controls").flatMap(e => elements(e).filter(child => child.props["aria-label"]?.endsWith("turn left")).map(child => child.props["aria-label"])), ["one turn left", "two turn left"]);
+  const desktop = harness(view);
+  assert.deepEqual(elements(desktop.tree).filter(e => e.props["aria-label"] === "Touch controls").flatMap(e => elements(e).filter(child => child.props["aria-label"]?.endsWith("turn left")).map(child => child.props["aria-label"])), ["one turn left", "two turn left", "three turn left"]);
+});
+
+test("phone touch controls ignore remote players and warn only when a third local slot is enabled", () => {
+  const view = room();
+  view.players.push({ ...view.players[0], id: "remote", deviceId: "elsewhere", name: "remote" });
+  const app = harness(view, undefined, undefined, "", true);
+  assert.deepEqual(elements(app.tree).filter(e => e.props["aria-label"] === "Touch controls").flatMap(e => elements(e).filter(child => child.props["aria-label"]?.endsWith("turn left")).map(child => child.props["aria-label"])), ["one turn left", "two turn left"]);
+  const lobby = harness(room("lobby"), undefined, undefined, "", true);
+  assert.equal(elements(lobby.tree).some(e => e.props.role === "status" && /more than two players/.test(text(e))), false);
+  elements(lobby.tree).find(e => e.props["aria-label"] === `Enable ${PLAYER_PALETTE[2].name}`)!.props.onClick();
+  assert.match(text(elements(lobby.render()).find(e => e.props.role === "status")!), /Touch controls are only available for the first two/);
+  elements(lobby.render()).find(e => e.props["aria-label"] === `Enable ${PLAYER_PALETTE[2].name}`)!.props.onClick();
+  assert.equal(elements(lobby.render()).some(e => e.props.role === "status" && /more than two players/.test(text(e))), false);
+});
+
+test("score and room details default collapsed on compact screens and expanded on desktop", () => {
+  const phone = harness(room("ready"), undefined, undefined, "", true);
+  const phoneDetails = elements(phone.tree).find(e => e.type === "details")!;
+  assert.equal(phoneDetails.props.open, false);
+  assert.equal(text(phoneDetails).includes("Start countdown"), false);
+  assert.equal(text(phoneDetails).includes("Pause"), false);
+  assert.match(text(phoneDetails), /Lobby/);
+  elements(phoneDetails).find(e => e.type === "Button" && text(e) === "Lobby")!.props.onClick();
+  assert.equal(phone.sockets[0].sent.at(-1).type, "lobby");
+  assert.ok(elements(phone.tree).some(e => text(e) === "Start countdown"));
+  const playingPhone = harness(room("playing"), undefined, undefined, "", true);
+  assert.ok(elements(playingPhone.tree).some(e => text(e).startsWith("Pause")));
+  assert.equal(text(elements(playingPhone.tree).find(e => e.type === "details")!).includes("Pause"), false);
+  assert.equal(elements(harness(room("ready")).tree).find(e => e.type === "details")!.props.open, true);
+});
+
+test("switching to compact layout releases held steering and power for hidden local players", () => {
+  const view = room();
+  view.players.push({ ...view.players[0], id: "player2", name: "three" });
+  const app = harness(view);
+  const pointer = (pointerId: number) => ({ pointerId, currentTarget: { setPointerCapture() {} } });
+  elements(app.tree).find(e => e.props["aria-label"] === "three turn left")!.props.onPointerDown(pointer(1));
+  elements(app.tree).find(e => e.props["aria-label"] === "three use Run faster")!.props.onPointerDown(pointer(2));
+  assert.equal(app.sockets[0].sent.at(-1).inputs[2].turn, -1);
+  assert.equal(app.sockets[0].sent.at(-1).inputs[2].power, true);
+  app.setCompact(true);
+  assert.equal(app.sockets[0].sent.at(-1).inputs[2].turn, 0);
+  assert.equal(app.sockets[0].sent.at(-1).inputs[2].power, false);
+  assert.deepEqual(elements(app.render()).filter(e => e.props["aria-label"] === "Touch controls").flatMap(e => elements(e).filter(child => child.props["aria-label"]?.endsWith("turn left")).map(child => child.props["aria-label"])), ["one turn left", "two turn left"]);
+});
+
+test("resizing a compact screen releases both players' held steering and power", () => {
+  const app = harness(room(), undefined, undefined, "", true);
+  const pointer = (pointerId: number) => ({ pointerId, currentTarget: { setPointerCapture() {} } });
+  const controlsByName = (name: string) => elements(app.tree).filter(e => e.props["aria-label"] === "Touch controls").flatMap(elements).filter(e => e.props["aria-label"]?.startsWith(`${name} `));
+  controlsByName("one").find(e => e.props["aria-label"] === "one turn left")!.props.onPointerDown(pointer(1));
+  controlsByName("one").find(e => e.props["aria-label"] === "one use Run faster")!.props.onPointerDown(pointer(2));
+  controlsByName("two").find(e => e.props["aria-label"] === "two turn right")!.props.onPointerDown(pointer(3));
+  controlsByName("two").find(e => e.props["aria-label"] === "two use Run faster")!.props.onPointerDown(pointer(4));
+  const held = app.sockets[0].sent.at(-1).inputs;
+  assert.deepEqual(held.slice(0, 2).map((input: any) => [input.turn, input.power]), [[-1, true], [1, true]]);
+  app.listeners.get("resize")!();
+  const released = app.sockets[0].sent.at(-1).inputs;
+  assert.deepEqual(released.slice(0, 2).map((input: any) => [input.turn, input.power]), [[0, false], [0, false]]);
+});
+
+test("compact touch labels show round power and score, including no power and zero points", () => {
+  const view = room();
+  view.players[0].roundPower = "shield";
+  view.players[0].score = 0;
+  view.players[1].power = "none";
+  view.players[1].score = 4;
+  const app = harness(view, undefined, undefined, "", true);
+  const stats = elements(app.tree).filter(e => e.props.className === "touchStats");
+  assert.equal(stats.length, 2);
+  assert.match(text(stats[0]), /Invisible · 0 pts · #2/);
+  assert.match(text(stats[1]), /No superpower · 4 pts · #1/);
+  const ranks = elements(app.tree).filter(e => e.props.className === "playerRank");
+  assert.deepEqual(ranks.map(e => [e.props["data-rank"], e.props["aria-label"]]), [[2, "Rank 2 in room"], [1, "Rank 1 in room"]]);
+});
+
+test("compact touch ranks include remote players, share ties, and update with room scores", () => {
+  const view = room();
+  view.players[0].score = 7;
+  view.players[1].score = 7;
+  view.players.push({ ...view.players[0], id: "remote", deviceId: "elsewhere", name: "remote", score: 10 });
+  const app = harness(view, undefined, undefined, "", true);
+  const getRanks = () => elements(app.render()).filter(e => e.props.className === "playerRank").map(e => e.props["data-rank"]);
+  assert.deepEqual(getRanks(), [2, 2]);
+  view.players[1].score = 12;
+  app.message({ type: "room", room: view, deviceId: "local" });
+  assert.deepEqual(getRanks(), [3, 1]);
+});
+
+test("desktop touch labels omit compact stats", () => {
+  assert.equal(elements(harness().tree).some(e => e.props.className === "touchStats" || e.props.className === "playerRank"), false);
 });
 
 test("rejected roster updates restore authoritative enabled slots and saved preferences", () => {
@@ -684,4 +814,95 @@ test("reload with no selected seats automatically observes an active room after 
   assert.equal(app.sockets[0].sent.at(-1).code, "ABCDE");
   assert.equal(app.storage.get("kurve-room"), "ABCDE");
   assert.notEqual(app.storage.get("kurve-spectator"), "true");
+});
+
+test("single-device rounds use local frames, immediate controls and pause without network input", () => {
+  const view = room("ready");
+  view.localRound = { deviceId: "local", completed: false };
+  const app = harness(view);
+  const local = app.localRound()!;
+  const canvas = () => elements(app.render()).find(e => e.type === "GameCanvas")!;
+  assert.match(text(app.render()), /Playing locally/);
+  elements(app.tree).find(e => text(e) === "Start countdown")!.props.onClick();
+  for (let i = 0; i < 190; i++) app.advance();
+  assert.equal(local.game.phase, "playing");
+  app.key("Digit1");
+  assert.equal(local.game.heads[0].turn, -1);
+  assert.equal(app.sockets[0].sent.filter(m => m.type === "input").length, 0);
+  assert.equal(canvas().props.inputRef.current.history.length, 0);
+  const before = local.game.tick;
+  app.key("Space");
+  for (let i = 0; i < 5; i++) app.advance();
+  assert.equal(local.game.tick, before);
+  assert.equal(local.game.phase, "paused");
+  app.key("Space");
+  app.advance(40);
+  assert.ok(local.game.tick > before);
+  app.message({ type: "frame", tick: 999, heads: [], segments: [], holes: [],
+    trailRevision: 99, effects: { darkUntil: 0 }, phase: "playing", inputAck: 0 });
+  assert.equal(canvas().props.frameRef.current.tick, local.game.tick);
+});
+
+test("a local round continues through a disconnect and reports its result after reconnecting", () => {
+  const view = room("ready");
+  view.localRound = { deviceId: "local", completed: false };
+  const app = harness(view);
+  const local = app.localRound()!;
+  elements(app.tree).find(e => text(e) === "Start countdown")!.props.onClick();
+  for (let i = 0; i < 190; i++) app.advance();
+  app.key("Digit1");
+  app.sockets[0].readyState = 3;
+  app.sockets[0].onclose?.({ code: 1006, reason: "" });
+  assert.equal(local.game.heads[0].turn, 0);
+  assert.equal(elements(app.render()).some(e => e.type === "h2" && text(e) === "Reconnecting…"), false);
+  const before = local.game.tick;
+  local.game.heads[0].x = 2;
+  local.game.heads[0].y = 200;
+  local.game.heads[0].angle = Math.PI;
+  local.game.heads[1].x = 800;
+  local.game.heads[1].y = 600;
+  local.game.heads[1].angle = 0;
+  app.advance(40);
+  assert.ok(local.game.tick > before);
+  assert.equal(local.game.phase, "roundEnd");
+  assert.equal(app.sockets[0].sent.some(m => m.type === "localEnd"), false);
+  app.timeouts[0]();
+  app.sockets[1].onopen?.();
+  app.message({ type: "snapshot", room: view, deviceId: "local", tick: 0,
+    heads: [], segments: [], holes: [], phase: "ready", inputAck: 0,
+    trailRevision: 1, effects: { darkUntil: 0 } });
+  assert.equal(app.localRound(), local);
+  assert.equal(app.states[3].phase, "roundEnd");
+  assert.equal(app.sockets[1].sent.at(-1).type, "localEnd");
+  assert.deepEqual(app.sockets[1].sent.at(-1).eliminations, [["one"]]);
+});
+
+test("remote arrivals wait until the local round ends, then the next round uses server frames", () => {
+  const view = room("ready");
+  view.localRound = { deviceId: "local", completed: false };
+  const app = harness(view);
+  const local = app.localRound()!;
+  const joined = { ...view, players: [...view.players, { ...view.players[0], id: "guest", deviceId: "remote" }] };
+  app.message({ type: "room", room: joined, deviceId: "local" });
+  assert.equal(app.localRound(), local);
+  assert.equal(local.game.players.length, 2);
+  assert.equal(app.states[3].players.length, 3);
+  const guestView = { ...joined, hostDeviceId: "remote", localRound: { deviceId: "remote", completed: false } };
+  assert.match(text(harness(guestView).tree), /Joining next round/);
+  local.game.phase = "roundEnd";
+  const completed = { ...joined, phase: "roundEnd" as const, localRound: { deviceId: "local", completed: true } };
+  app.message({ type: "room", room: completed, deviceId: "local" });
+  elements(app.render()).find(e => text(e) === "Next round")!.props.onClick();
+  assert.equal(app.sockets[0].sent.at(-1).type, "next");
+  assert.equal(app.sockets[0].sent.at(-1).local, true);
+  const online = { ...joined, localRound: undefined, round: 2, phase: "ready" as const };
+  app.message({ type: "room", room: online, deviceId: "local" });
+  app.render();
+  assert.equal(app.localRound(), undefined);
+  app.message({ type: "room", room: { ...online, phase: "playing" }, deviceId: "local" });
+  app.message({ type: "frame", tick: 250, heads: [], segments: [], holes: [],
+    trailRevision: 2, effects: { darkUntil: 0 }, phase: "playing", inputAck: 0 });
+  app.key("Digit1");
+  assert.equal(app.sockets[0].sent.at(-1).type, "input");
+  assert.equal(elements(app.render()).find(e => e.type === "GameCanvas")!.props.frameRef.current.tick, 250);
 });

@@ -72,6 +72,7 @@ export interface RoomView {
   height: number;
   winnerId?: string;
   deathmatch?: string[];
+  localRound?: { deviceId: string; completed: boolean };
 }
 export interface Head {
   id: string;
@@ -147,7 +148,16 @@ export type ClientMessage =
       seq?: number;
       inputs: { id: string; turn: Turn; power?: boolean }[];
     }
-  | { type: "start" | "countdown" | "next" | "lobby" | "pause" }
+  | { type: "start" | "next"; local?: boolean }
+  | { type: "countdown" | "lobby" | "pause" }
+  | { type: "localState"; round: number; phase: "countdown" | "playing" | "paused" }
+  | {
+      type: "localEnd";
+      round: number;
+      tick: number;
+      eliminations: string[][];
+      players: { id: string; charges: number; roundPower?: Power }[];
+    }
   | { type: "settings"; settings: Partial<GameSettings> }
   | { type: "powerRules"; rules: PowerRules }
   | { type: "ping"; at: number };

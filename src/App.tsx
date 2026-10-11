@@ -14,6 +14,7 @@ import { getMapDimensions, MAX_CUSTOM_MAP_SIZE, MIN_CUSTOM_MAP_SIZE } from "../s
 import { PLAYER_PALETTE } from "../shared/player-palette";
 import GameCanvas, { type FrameData } from "./GameCanvas";
 import type { PredictionInputState } from "./prediction";
+import { LocalRound } from "./local-game";
 import { DEFAULT_KEYS, isControlKey, keyLabel, newId, normalizeControlKey, steering } from "./controls";
 import s from "./App.module.css";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,7 @@ const POWER_NAMES: Record<Power, string> = {
   random: "Random",
 };
 const POWER_ORDER = Object.keys(POWER_NAMES) as Power[];
+const COMPACT_SCREEN = "(max-width: 650px), (max-width: 950px) and (max-height: 500px)";
 
 function playerPower(rules: PowerRules, id: string) {
   return Object.hasOwn(rules.players, id) ? rules.players[id] : undefined;
@@ -164,7 +166,9 @@ export default function App() {
   );
   const [connectionReplaced, setConnectionReplaced] = useState(false);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const [compact, setCompact] = useState(() => window.matchMedia(COMPACT_SCREEN).matches);
   const ws = useRef<WebSocket | null>(null);
+  const localRoundRef = useRef<LocalRound | null>(null);
   const frameRef = useRef<FrameData>({
     tick: 0,
     heads: [],
@@ -196,14 +200,111 @@ export default function App() {
     room?.settings.targetScore ||
     Math.max(1, (room?.players.length ?? enabled.length) - 1) * 10;
 
+  useEffect(() => {
+    const screen = window.matchMedia(COMPACT_SCREEN);
+    const change = () => {
+      touch.current.clear();
+      touchPower.current.clear();
+      sendInputs();
+      setCompact(screen.matches);
+    };
+    screen.addEventListener("change", change);
+    return () => screen.removeEventListener("change", change);
+  }, []);
+
   function send(message: ClientMessage) {
+    const local = localRoundRef.current;
+    if (local && (message.type === "countdown" || message.type === "pause")) {
+      try {
+        if (message.type === "countdown") local.game.beginCountdown();
+        else local.game.pause();
+        publishLocalRound();
+        syncLocalRound();
+        return true;
+      } catch (error) {
+        setError(error instanceof Error ? error.message : "Cannot change this round.");
+        return false;
+      }
+    }
     if (ws.current?.readyState === WebSocket.OPEN) {
+      if (message.type === "start" || message.type === "next") message = { ...message, local: true };
       ws.current.send(JSON.stringify(message));
       return true;
     }
     setError("The server is reconnecting. Try again in a moment.");
     return false;
   }
+
+  function syncLocalRound() {
+    const local = localRoundRef.current;
+    const accepted = confirmedRoomRef.current;
+    if (!local || ws.current?.readyState !== WebSocket.OPEN ||
+      accepted?.localRound?.deviceId !== deviceId || accepted.localRound.completed ||
+      accepted.round !== local.game.round) return;
+    const phase = local.game.phase;
+    if (phase === "roundEnd" || phase === "finished")
+      ws.current.send(JSON.stringify(local.result()));
+    else if (phase === "countdown" || phase === "playing" || phase === "paused")
+      ws.current.send(JSON.stringify({ type: "localState", round: local.game.round, phase }));
+  }
+
+  function publishLocalRound(updateRoom = true) {
+    const local = localRoundRef.current;
+    const current = roomRef.current;
+    if (!local || !current) return;
+    const game = local.game;
+    const frame = frameRef.current;
+    frame.tick = game.tick;
+    frame.phase = game.phase;
+    frame.heads = game.publicHeads();
+    frame.trailRevision = game.trailRevision;
+    frame.trailColors = game.trailColors;
+    frame.effects = game.effects;
+    frame.inputAck = inputRef.current.sequence;
+    frame.segments.push(...game.takeSegments());
+    frame.holes.push(...game.takeHoles());
+    frame.receivedAt = performance.now();
+    if (game.phase === "countdown") setCountdown(Math.max(1, Math.ceil(game.countdown / 60)));
+    if (!updateRoom) return;
+    const next = {
+      ...current, phase: game.phase, winnerId: game.winnerId, deathmatch: game.deathmatch,
+      players: current.players.map(player => {
+        const own = game.players.find(own => own.id === player.id);
+        return own ? { ...own, connected: player.connected } : player;
+      }),
+    };
+    roomRef.current = next;
+    setRoom(next);
+    if (game.phase !== "playing") {
+      pressed.current.clear();
+      touch.current.clear();
+      touchPower.current.clear();
+    }
+  }
+
+  useEffect(() => {
+    if (!localRoundRef.current) return;
+    let animation = 0;
+    let previous = performance.now(), accumulator = 0;
+    const tick = (now: number) => {
+      const local = localRoundRef.current;
+      if (!local) return;
+      accumulator += Math.min(now - previous, 100);
+      previous = now;
+      let changed = false, steps = 0;
+      const phase = local.game.phase;
+      while (accumulator >= 1000 / 60 && steps++ < 5) {
+        changed = local.step() || changed;
+        accumulator -= 1000 / 60;
+      }
+      if (accumulator >= 1000 / 60) accumulator = 0;
+      publishLocalRound(changed);
+      if (phase !== local.game.phase) syncLocalRound();
+      animation = requestAnimationFrame(tick);
+    };
+    animation = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animation);
+  }, [room?.localRound?.deviceId, room?.round, !!localRoundRef.current]);
 
   useEffect(() => {
     let active = true;
@@ -258,6 +359,28 @@ export default function App() {
           rejoining = false;
           const previous = roomRef.current;
           confirmedRoomRef.current = message.room;
+          if (message.room.localRound?.deviceId === deviceId &&
+            (!message.room.localRound.completed || localRoundRef.current?.game.round === message.room.round)) {
+            if (localRoundRef.current?.game.round !== message.room.round) {
+              localRoundRef.current = new LocalRound(message.room);
+              frameRef.current.reset++;
+              frameRef.current.segments = [];
+              frameRef.current.holes = [];
+              inputRef.current.history = [];
+            }
+            roomRef.current = message.room;
+            publishLocalRound();
+            if (message.type === "snapshot") {
+              pendingRosterRequests.current = 0;
+              reconcileRoster(message.room);
+              syncLocalRound();
+            }
+            setSettings(message.room.settings);
+            setPending(false);
+            sessionStorage.setItem("kurve-room", message.room.code);
+            return;
+          }
+          localRoundRef.current = null;
           if (message.type === "snapshot") pendingPowerRulesRequests.current = 0;
           else if (message.requestType === "powerRules") {
             pendingPowerRulesRequests.current = Math.max(0, pendingPowerRulesRequests.current - 1);
@@ -320,6 +443,7 @@ export default function App() {
           setPending(false);
           sessionStorage.setItem("kurve-room", message.room.code);
         } else if (message.type === "frame") {
+          if (roomRef.current?.localRound) return;
           const frame = frameRef.current;
           if (frame.trailRevision !== message.trailRevision) {
             frame.segments = [];
@@ -384,6 +508,7 @@ export default function App() {
             sessionStorage.removeItem("kurve-room");
             roomRef.current = null;
             confirmedRoomRef.current = null;
+            localRoundRef.current = null;
             powerRulesDraft.current = null;
             pendingPowerRulesRequests.current = 0;
             pendingRosterRequests.current = 0;
@@ -407,9 +532,11 @@ export default function App() {
           reconcileRoster(confirmedRoomRef.current);
         pendingRosterRequests.current = 0;
         inputRef.current.history = [];
+        localRoundRef.current?.game.stopInputs(localRoundRef.current.game.players.map(player => player.id));
         setPending(false);
         if (event.code === 1008 && event.reason === "This device reconnected in another tab.") {
           setConnectionReplaced(true);
+          localRoundRef.current = null;
           setError("This game is open in another tab. Reconnect here to take control.");
           return;
         }
@@ -419,6 +546,7 @@ export default function App() {
     }
     connect();
     const ping = setInterval(() => {
+      syncLocalRound();
       if (ws.current?.readyState === WebSocket.OPEN)
         ws.current.send(
           JSON.stringify({ type: "ping", at: performance.now() }),
@@ -429,6 +557,7 @@ export default function App() {
       clearTimeout(timer);
       clearInterval(ping);
       ws.current?.close();
+      localRoundRef.current = null;
     };
   }, [deviceId, sessionToken, connectionAttempt]);
 
@@ -458,7 +587,7 @@ export default function App() {
     if (
       roomRef.current?.phase !== "playing" ||
       spectatorRef.current ||
-      ws.current?.readyState !== WebSocket.OPEN
+      (!localRoundRef.current && ws.current?.readyState !== WebSocket.OPEN)
     )
       return;
     const localIds = new Set(
@@ -483,11 +612,18 @@ export default function App() {
             [...touchPower.current.values()].includes(slot.id),
         };
       });
+    if (localRoundRef.current) {
+      let changed = false;
+      for (const input of inputs)
+        changed = localRoundRef.current.game.input(input.id, input.turn, input.power) || changed;
+      publishLocalRound(changed);
+      return;
+    }
     const seq = ++inputRef.current.sequence;
     inputRef.current.history.push({ seq, at: performance.now(), inputs });
     // Bound unacknowledged history during a stalled connection.
     if (inputRef.current.history.length > 120) inputRef.current.history.shift();
-    ws.current.send(JSON.stringify({ type: "input", seq, inputs }));
+    ws.current!.send(JSON.stringify({ type: "input", seq, inputs }));
   }
 
   useEffect(() => {
@@ -617,6 +753,7 @@ export default function App() {
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", release);
+    window.addEventListener("resize", release);
     document.addEventListener("visibilitychange", hidden);
     const heartbeat = setInterval(() => {
       if (!document.hidden) sendInputs();
@@ -625,6 +762,7 @@ export default function App() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", release);
+      window.removeEventListener("resize", release);
       document.removeEventListener("visibilitychange", hidden);
       clearInterval(heartbeat);
     };
@@ -768,7 +906,9 @@ export default function App() {
       setToast("Use your browser’s fullscreen shortcut (F11).");
     }
   }
-  const connectionLabel = connected
+  const localGame = room?.localRound?.deviceId === deviceId && !!localRoundRef.current;
+  const waitingForLocal = !!room?.localRound && room.localRound.deviceId !== deviceId && !room.localRound.completed;
+  const connectionLabel = localGame ? (connected ? "Playing locally" : "Playing locally · reconnecting") : connected
     ? latency === null
       ? "Connected"
       : `${latency} ms`
@@ -786,7 +926,7 @@ export default function App() {
             setConnectionAttempt((attempt) => attempt + 1);
           }}>Reconnect here</Button>
         )}
-        <Button variant="ghost" className={s.textButton} onClick={fullscreen}>
+        <Button variant="ghost" className={`${s.textButton} ${s.fullscreenButton}`} onClick={fullscreen}>
           Fullscreen
         </Button>
       </header>
@@ -915,8 +1055,19 @@ export default function App() {
                   })}
                 </TableBody>
               </Table>
+              {!(room && spectator) && enabled.length > 2 && (
+                <p className={s.mobileWarning} role="status">
+                  We don’t recommend more than two players on one phone. Touch controls are only
+                  available for the first two; use another device for the others.
+                </p>
+              )}
               {!(room && spectator) && (
-                <p className={s.muted}>
+                <p className={`${s.muted} ${s.mobileHint}`}>
+                  Tap a player’s color to join. Up to two players can share this phone.
+                </p>
+              )}
+              {!(room && spectator) && (
+                <p className={`${s.muted} ${s.keyboardHint}`}>
                   Press any player key to join; in the lobby, their power key cycles superpowers.
                 </p>
               )}
@@ -1164,16 +1315,23 @@ export default function App() {
         ) : (
           <>
             <div
-              className={`${s.gameLayout} ${projector && room.phase === "ready" ? s.projectorReady : ""}`}
+              className={s.gameLayout}
             >
               <section className={s.arenaPanel}>
                 <div className={s.arenaHeader}>
                   <span>
                     {room.deathmatch ? "Deathmatch" : `Round ${room.round}`}
+                    {localGame && " · Local"}
                   </span>
+                  {host && ["playing", "countdown", "paused"].includes(room.phase) && (
+                    <Button variant="outline" className={s.button}
+                      onClick={() => send({ type: "pause" })}>
+                      {room.phase === "paused" ? "Resume" : "Pause"} <kbd>SPACE</kbd>
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
-                    className={s.textButton}
+                    className={`${s.textButton} ${s.projectorButton}`}
                     onClick={() => {
                       touch.current.clear();
                       touchPower.current.clear();
@@ -1184,17 +1342,23 @@ export default function App() {
                     {projector ? "Exit projector" : "Projector view"}
                   </Button>
                 </div>
-                <div className={s.canvasWrap}>
+                <div className={s.canvasWrap}
+                  style={{ "--arena-ratio": room.width / room.height } as CSSProperties}>
                   <GameCanvas
                     room={room}
                     frameRef={frameRef}
                     inputRef={inputRef}
                     projector={projector}
                   />
-                  {room.phase !== "ready" &&
-                    (room.phase !== "playing" || !connected) && (
+                  {(waitingForLocal || (room.phase !== "ready" &&
+                    (room.phase !== "playing" || (!connected && !localGame)))) && (
                     <div className={s.arenaOverlay}>
-                      {!connected ? (
+                      {waitingForLocal ? (
+                        <>
+                          <h2 className={s.overlayTitle}>Joining next round</h2>
+                          <p className={s.overlayCopy}>This round is running on the host’s device. Online play starts after it ends.</p>
+                        </>
+                      ) : !connected && !localGame ? (
                         <h2 className={s.overlayTitle}>{connectionReplaced ? "Open in another tab" : "Reconnecting…"}</h2>
                       ) : room.phase === "paused" ? (
                         <>
@@ -1245,7 +1409,7 @@ export default function App() {
                             <span className={s.muted}>Waiting for host</span>
                           )}
                           {room.phase === "roundEnd" && (
-                            <p className={s.overlayCopy}>
+                            <p className={`${s.overlayCopy} ${s.keyboardHint}`}>
                               Press <kbd>SPACE</kbd> to prepare the next round.
                             </p>
                           )}
@@ -1254,55 +1418,33 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                {!projector && host && (
-                  <div className={s.controlsBar}>
-                    {["playing", "countdown", "paused"].includes(
-                      room.phase,
-                    ) && (
-                      <Button
-                        variant="outline"
-                        className={s.button}
-                        onClick={() => send({ type: "pause" })}
-                      >
-                        {room.phase === "paused" ? "Resume" : "Pause"}{" "}
-                        <kbd>SPACE</kbd>
+                {room.phase === "ready" && !waitingForLocal && (
+                  <div className={s.readyPrompt}>
+                    <h2 className={s.overlayTitle}>
+                      Find your name on the board
+                    </h2>
+                    <p className={s.overlayCopy}>
+                      {host ? (
+                        <>
+                          When everyone’s ready, press <kbd>SPACE</kbd> or start
+                          the countdown below.
+                        </>
+                      ) : (
+                        "Waiting for the host to start the countdown."
+                      )}
+                    </p>
+                    {host && (
+                      <Button className={s.button} disabled={!connected && !localGame}
+                        onClick={() => send({ type: "countdown" })}>
+                        Start countdown
                       </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      className={s.button}
-                      onClick={() => send({ type: "lobby" })}
-                    >
-                      Lobby
-                    </Button>
                   </div>
                 )}
               </section>
-              {(!projector || room.phase === "ready") && (
-                <aside className={s.scoreboard}>
-                  {room.phase === "ready" && (
-                    <div className={s.readyPrompt}>
-                      <h2 className={s.overlayTitle}>
-                        Find your name on the board
-                      </h2>
-                      <p className={s.overlayCopy}>
-                        {host ? (
-                          <>
-                            When everyone’s ready, press <kbd>SPACE</kbd> or start
-                            the countdown below.
-                          </>
-                        ) : (
-                          "Waiting for the host to start the countdown."
-                        )}
-                      </p>
-                      {host && (
-                        <Button className={s.button} disabled={!connected}
-                          onClick={() => send({ type: "countdown" })}>
-                          Start countdown
-                        </Button>
-                      )}
-                    </div>
-                  )}
+              {!projector && (
+                <details className={s.scoreboard} open={!compact}>
+                  <summary className={s.gameMenuSummary}>Score &amp; room</summary>
                   <div className={s.panelHeader}>
                     <span>Score</span>
                     <span className={s.muted}>First to {target}</span>
@@ -1332,15 +1474,25 @@ export default function App() {
                     <span className={s.roomCode}>{room.code}</span>
                     {spectator && <span className={s.muted}>Spectating</span>}
                   </div>
-                </aside>
+                  {host && (
+                    <div className={s.controlsBar}>
+                      <Button variant="outline" className={s.button}
+                        onClick={() => send({ type: "lobby" })}>
+                        Lobby
+                      </Button>
+                    </div>
+                  )}
+                </details>
               )}
             </div>
             {!spectator && !projector && (
               <div className={s.touchControls} aria-label="Touch controls">
                 {room.players
                   .filter((player) => player.deviceId === deviceId)
+                  .slice(0, compact ? 2 : undefined)
                   .map((player) => {
                     const slot = slots.find((value) => value.id === player.id);
+                    const rank = 1 + room.players.filter((other) => other.score > player.score).length;
                     return (
                       <div
                         className={s.touchPlayer}
@@ -1349,7 +1501,16 @@ export default function App() {
                         }
                         key={player.id}
                       >
-                        <span>{player.name}</span>
+                        <span className={s.touchPlayerLabel}>
+                          <span className={s.touchName}>{player.name}</span>
+                          {compact && (
+                            <span className={s.touchStats}>
+                              <span> · {POWER_NAMES[player.roundPower ?? player.power]}</span>
+                              <span> · {player.score} pts · <span className={s.playerRank}
+                                data-rank={rank} aria-label={`Rank ${rank} in room`}>#{rank}</span></span>
+                            </span>
+                          )}
+                        </span>
                         {([-1, 1] as Turn[]).map((turn, index) => (
                           <Button
                             variant="outline"

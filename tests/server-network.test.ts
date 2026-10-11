@@ -97,6 +97,125 @@ async function roomFixture(graceMs = 30_000) {
   return { app, host, room, connect, join };
 }
 
+test("local rounds freeze the server, queue late players, and hand the next round to the server", async () => {
+  const { app, host, room, join } = await roomFixture();
+  let guest: Client | undefined;
+  try {
+    host.send({ type: "start", local: true });
+    const ready = await host.wait("room", message => message.room.phase === "ready" && message.room.localRound?.completed === false);
+    const round = ready.room.round;
+    assert.deepEqual(ready.room.localRound, { deviceId: device(1), completed: false });
+    host.send({ type: "localState", round, phase: "playing" });
+    await host.wait("room", message => message.room.phase === "playing");
+    for (let tick = 0; tick < 10; tick++) app.step();
+    assert.equal(room.game.tick, 0, "the server must not advance a local round");
+
+    guest = await join(2, 1);
+    assert.equal(room.game.players.length, 3);
+    assert.equal(room.game.heads.length, 2, "late players wait for the next round");
+    guest.send({ type: "localEnd", round, tick: 180, eliminations: [["player-1-0"]], players: [] });
+    assert.match((await guest.wait("error")).message, /Only the host/);
+
+    const result = {
+      type: "localEnd",
+      round,
+      tick: 180,
+      eliminations: [["player-1-0"]],
+      players: [
+        { id: "player-1-0", charges: 5, roundPower: "jump" },
+        { id: "player-1-1", charges: 4, roundPower: "jump" },
+      ],
+    };
+    host.send({ ...result, round: round - 1 });
+    assert.match((await host.wait("error")).message, /does not own the local round/);
+    host.send({ ...result, tick: 179 });
+    assert.match((await host.wait("error")).message, /duration/);
+    host.send({ ...result, eliminations: [["unknown-player"]] });
+    assert.match((await host.wait("error")).message, /local eliminations/);
+    assert.equal(room.game.players.find(player => player.id === "player-1-1")?.score, 0);
+
+    host.send(result);
+    const ended = await host.wait("room", message => message.room.localRound?.completed === true);
+    assert.equal(ended.room.phase, "roundEnd");
+    assert.deepEqual(ended.room.players.map(({ id, score, charges }) => [id, score, charges]), [
+      ["player-1-0", 0, 5], ["player-1-1", 1, 4], ["player-2-0", 0, 2],
+    ]);
+    host.send(result);
+    await host.wait("room", message => message.room.localRound?.completed === true);
+    assert.equal(room.game.players.find(player => player.id === "player-1-1")?.score, 1,
+      "repeated completion must not award points twice");
+
+    host.send({ type: "next", local: true });
+    const next = await host.wait("room", message => message.room.phase === "ready" && message.room.round === round + 1);
+    assert.equal(next.room.localRound, undefined, "the remote device forces server simulation");
+    assert.equal(room.game.heads.length, 3);
+    assert.deepEqual(room.game.players.map(({ score, charges }) => [score, charges]), [[0, 5], [1, 4], [0, 2]]);
+    host.send({ type: "countdown" });
+    await host.wait("room", message => message.room.phase === "countdown");
+    for (let tick = 0; tick < 180; tick++) app.step();
+    assert.equal(room.game.phase, "playing");
+    assert.equal(room.game.tick, 360);
+  } finally {
+    guest?.socket.close();
+    await app.close();
+  }
+});
+
+test("a connected spectator selects server simulation even when local was requested", async () => {
+  const { app, host, connect, room } = await roomFixture();
+  let spectator: Client | undefined;
+  try {
+    spectator = await connect();
+    spectator.send({ type: "spectate", code: room.code, deviceId: device(2), sessionToken: token(2) });
+    await spectator.wait("snapshot");
+    host.send({ type: "start", local: true });
+    const ready = await host.wait("room", message => message.room.phase === "ready");
+    assert.equal(ready.room.localRound, undefined);
+    host.send({ type: "countdown" });
+    await host.wait("room", message => message.room.phase === "countdown");
+    for (let tick = 0; tick < 180; tick++) app.step();
+    assert.equal(room.game.phase, "playing");
+    assert.equal(room.game.tick, 180);
+  } finally {
+    spectator?.socket.close();
+    await app.close();
+  }
+});
+
+test("the local owner keeps its lock through reconnect and grace expiry cancels the round", async () => {
+  const { app, host, room, connect } = await roomFixture(60);
+  let spectator: Client | undefined;
+  let reconnect: Client | undefined;
+  try {
+    host.send({ type: "start", local: true });
+    const ready = await host.wait("room", message => message.room.phase === "ready" && message.room.localRound?.completed === false);
+    host.socket.close();
+    await once(host.socket, "close");
+    assert.equal(room.localRound?.deviceId, device(1));
+    assert.equal(room.localRound?.completed, false);
+
+    reconnect = await connect();
+    reconnect.send({ type: "join", code: room.code, deviceId: device(1), sessionToken: token(1), players: roster(1, 2) });
+    const restored = await reconnect.wait("snapshot");
+    assert.equal(restored.room.localRound?.deviceId, device(1));
+    reconnect.send({ type: "localState", round: ready.room.round, phase: "playing" });
+    await reconnect.wait("room", message => message.room.phase === "playing");
+
+    spectator = await connect();
+    spectator.send({ type: "spectate", code: room.code, deviceId: device(2), sessionToken: token(2) });
+    await spectator.wait("snapshot");
+    reconnect.socket.close();
+    await once(reconnect.socket, "close");
+    const cancelled = await spectator.wait("room", message => message.room.phase === "lobby" && message.room.hostDeviceId === device(2));
+    assert.equal(cancelled.room.localRound, undefined);
+    assert.ok(cancelled.room.players.every(player => player.deviceId !== device(1)));
+  } finally {
+    reconnect?.socket.close();
+    spectator?.socket.close();
+    await app.close();
+  }
+});
+
 test("map size settings are validated, shared, and restricted to the host in the lobby", async () => {
   const { app, host, room, join } = await roomFixture();
   try {
