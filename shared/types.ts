@@ -26,7 +26,7 @@ export type Phase =
   | "finished";
 
 export const MAP_SIZES = {
-  classic: { label: "Classic", width: 1200, height: 800 },
+  classic: { label: "Small", width: 1200, height: 800 },
   recommended: { label: "Recommended", width: 1440, height: 960 },
   large: { label: "Large", width: 1800, height: 1200 },
 } as const;
@@ -152,7 +152,12 @@ export type ClientMessage =
   | { type: "powerRules"; rules: PowerRules }
   | { type: "ping"; at: number };
 export type ServerMessage =
-  | { type: "room"; room: RoomView; deviceId: string; requestType?: "players" | "powerRules" }
+  | {
+      type: "room";
+      room: RoomView;
+      deviceId: string;
+      requestType?: "players" | "powerRules";
+    }
   | ({ type: "snapshot"; room: RoomView; deviceId: string } & WorldFrame)
   | ({ type: "frame" } & WorldFrame)
   | { type: "error"; message: string; requestType?: string; room?: RoomView }
