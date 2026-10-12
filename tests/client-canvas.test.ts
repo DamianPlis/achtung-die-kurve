@@ -40,6 +40,7 @@ function harness() {
     strokes: { color: string; composite: string; width: number }[] = [];
     images = 0;
     circles = 0;
+    positions: { x: number; y: number }[] = [];
     setTransform() {}
     clearRect() {}
     beginPath() {}
@@ -48,7 +49,7 @@ function harness() {
     stroke() { this.strokes.push({ color: this.strokeStyle, composite: this.globalCompositeOperation, width: this.lineWidth }); }
     fillRect() {}
     drawImage() { this.images++; }
-    arc() { this.circles++; }
+    arc(x: number, y: number) { this.circles++; this.positions.push({ x, y }); }
     fill() {}
     setLineDash() {}
     fillText() {}
@@ -145,4 +146,20 @@ test("late snapshots preserve departed owners' colors without rendering absent-o
   app.draw(1048);
   assert.equal(app.trailContext.strokes.length, strokes + 1);
   assert.equal(app.trailContext.strokes.at(-1)!.color, "#00f");
+});
+
+test("locally simulated heads render their actual position without network prediction or smoothing", () => {
+  const app = harness();
+  app.render({ ...app.view, localRound: { deviceId: "local", completed: false } });
+  const head = {
+    id: "one", ownerId: "one", x: 100, y: 100, angle: 0, alive: true, gap: false, powerActive: false,
+    turn: 1 as const, speed: 84, turnRate: 2.1, revision: 0, wrap: false, square: false, invisible: false, invulnerable: false,
+  };
+  app.frameRef.current.heads = [head];
+  app.draw(1100);
+  assert.deepEqual(app.arenaContext.positions.at(-1), { x: 100, y: 100 });
+  app.frameRef.current.heads = [{ ...head, x: 103, y: 104 }];
+  app.frameRef.current.receivedAt = 1110;
+  app.draw(1150);
+  assert.deepEqual(app.arenaContext.positions.at(-1), { x: 103, y: 104 });
 });

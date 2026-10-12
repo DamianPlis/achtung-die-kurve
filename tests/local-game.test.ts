@@ -96,3 +96,12 @@ test("LocalRound does not advance ready or completed phases", () => {
   assert.equal(round.step(), false);
   assert.equal(round.game.tick, 0);
 });
+
+test("reloading a local round keeps queued guests out of its simulation and result", () => {
+  const source = room();
+  source.localRound = { deviceId: "device-1", completed: false };
+  source.players.push({ ...source.players[0], id: "guest", deviceId: "device-2" });
+  const round = new LocalRound(source);
+  assert.deepEqual(round.game.players.map(player => player.id), ["one", "two"]);
+  assert.deepEqual(round.result().players.map(player => player.id), ["one", "two"]);
+});

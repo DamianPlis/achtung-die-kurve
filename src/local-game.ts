@@ -4,11 +4,17 @@ import type { ClientMessage, RoomView } from "../shared/types.js";
 export type LocalEndMessage = Extract<ClientMessage, { type: "localEnd" }>;
 
 export class LocalRound {
+  // shortcut: unfinished rounds restart on reload; persist checkpoints if reload recovery is needed.
   readonly game: Game;
   readonly eliminations: string[][] = [];
 
   constructor(room: RoomView) {
-    this.game = Game.fromRoom(room);
+    this.game = Game.fromRoom({
+      ...room,
+      players: room.localRound
+        ? room.players.filter(player => player.deviceId === room.localRound!.deviceId)
+        : room.players,
+    });
   }
 
   step(): boolean {
